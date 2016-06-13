@@ -113,12 +113,9 @@ module Forwardable
   # Version of +forwardable.rb+
   FORWARDABLE_VERSION = "1.1.0"
 
-  FILE_REGEXP = %r"#{Regexp.quote(__FILE__)}"
-
   @debug = nil
   class << self
-    # If true, <tt>__FILE__</tt> will remain in the backtrace in the event an
-    # Exception is raised.
+    # ignored
     attr_accessor :debug
   end
 
@@ -198,15 +195,25 @@ module Forwardable
       accessor = "#{accessor}()"
     end
 
+    unless begin
+             iseq = RubyVM::InstructionSequence
+                    .compile("().#{method}", nil, nil, 0, false)
+           rescue SyntaxError
+           else
+             iseq.to_a.dig(-1, 1, 1, :mid) == method.to_sym
+           end
+      method_call = "__send__(:#{method}, *args, &block)"
+    else
+      method_call = "#{method}(*args, &block)"
+    end
+
     line_no = __LINE__+1; str = "#{<<-"begin;"}\n#{<<-"end;"}"
     begin;
       proc do
         def #{ali}(*args, &block)
           begin
             #{accessor}
-          ensure
-            $@.delete_if {|s| ::Forwardable::FILE_REGEXP =~ s} if $@ and !::Forwardable::debug
-          end.__send__ :#{method}, *args, &block
+          end.#{method_call}
         end
       end
     end;

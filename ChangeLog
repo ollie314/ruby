@@ -1,3 +1,102 @@
+Mon Jun 13 16:58:53 2016  Martin Duerst  <duerst@it.aoyama.ac.jp>
+
+	* test/ruby/enc/test_case_comprehensive.rb: Add tests for full Unicode
+	  swapcase.
+
+Sun Jun 12 14:48:00 2016  Martin Duerst  <duerst@it.aoyama.ac.jp>
+
+	* test/ruby/enc/test_case_comprehensive.rb: Add tests for ASCII-only
+	  swapcase; store calculated values in hashes.
+
+Sun Jun 12 14:05:45 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* ext/openssl/ossl_cipher.c (ossl_cipher_get_auth_tag,
+	  ossl_cipher_set_auth_tag): Check if the cipher flags retrieved by
+	  EVP_CIPHER_CTX_flags() includes EVP_CIPH_FLAG_AEAD_CIPHER to see if
+	  the cipher supports AEAD. AES-GCM was the only supported in OpenSSL
+	  1.0.1.
+
+	  (Init_ossl_cipher): Fix doc; OpenSSL::Cipher::AES.new(128, :GCM) can't
+	  work.
+
+	* ext/openssl/openssl_missing.h: Define EVP_CTRL_AEAD_{GET,SET}_TAG if
+	  missing. They are added in OpenSSL 1.1.0, and have the same value as
+	  EVP_CTRL_GCM_{GET,SET}_TAG and EVP_CTRL_CCM_{GET,SET}_TAG.
+
+Sun Jun 12 13:47:42 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* test/openssl/test_engine.rb (test_openssl_engine_builtin,
+	  test_openssl_engine_by_id_string): Skip test if 'openssl' engine is
+	  already loaded. And test the number increased by Engine.load{_by_id,},
+	  not the total count of loaded engines. Previously, we called
+	  OpenSSL::Engine.cleanup every time running a test case, but we no
+	  longer can do it.
+	  [ruby-core:75225] [Feature #12324]
+
+Sun Jun 12 09:24:34 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* file.c (append_fspath): normalize directory name to be appended
+	  on OS X.  [ruby-core:75957] [Ruby trunk Bug#12483]
+	  https://github.com/rails/rails/issues/25303#issuecomment-224834804
+
+Sat Jun 11 23:07:32 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* lib/forwardable.rb (_delegator_method): get rid of a warning which
+	  causes test failures introduced at r55376.
+
+Sat Jun 11 18:37:58 2016  Marcus Stollsteimer  <sto.mar@web.de>
+
+	* ext/json/lib/*.rb: Removed some comments. Because these are unnecessary
+	  class description. [ci skip][Bug #12255][ruby-core:74835]
+
+Sat Jun 11 15:19:38 2016  takiy33  <takiy33@users.noreply.github.com>
+
+	* lib/net/smtp.rb: [DOC] Remove dead link on documentation for
+	  Japanese of SMTP.  [Fix GH-1380]
+
+Sat Jun 11 15:02:45 2016  Grant Hutchins  <github@nertzy.com>
+
+	* string.c (rb_str_oct): [DOC] fix typo, hornored -> honored.
+	  [Fix GH-1379]
+
+Sat Jun 11 14:04:19 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/objspace/objspace_dump.c: generate valid JSON for dump_all.
+
+Sat Jun 11 13:52:33 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/forwardable.rb (_delegator_method): remove __send__ call if
+	  possible, so that more optimizations will be enabled.
+
+Sat Jun 11 11:24:36 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* enc/iso_8859.h (SHARP_s): name frequently used codepoint.
+
+Sat Jun 11 09:58:45 2016  Martin Duerst  <duerst@it.aoyama.ac.jp>
+
+	* enc/iso_8859_1.c: Revert to older version of code.
+
+Sat Jun 11 09:46:17 2016  Martin Duerst  <duerst@it.aoyama.ac.jp>
+
+	* enc/iso_8859_1.c: Implement non-ASCII case mapping.
+
+	* test/ruby/enc/test_case_comprehensive.rb: Tests for above.
+
+	* string.c: Add iso-8859-1 to supported encodings.
+
+Sat Jun 11 09:31:28 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/forwardable.rb (_delegator_method): leave the backtrace
+	  untouched during accessor.  forwardable.rb does not appear in
+	  the backtrace during delegated method because of tail-call
+	  optimization.
+
+Sat Jun 11 01:38:31 2016  Naohisa Goto  <ngotogenome@gmail.com>
+
+	* include/ruby/defines.h (GCC_VERSION_SINCE): Fix logic error by
+	  adding parentheses. Fix failures of TestMkmf::TestConvertible
+	  with GCC 3.4.3 on Solaris 10. [Bug #12479] [ruby-dev:49660]
+
 Fri Jun 10 21:54:24 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
 	* lib/forwardable.rb (Forwardable._delegator_method): extract

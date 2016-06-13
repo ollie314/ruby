@@ -225,18 +225,21 @@ class TestForwardable < Test::Unit::TestCase
   class Foo
     extend Forwardable
 
+    attr_accessor :bar
     def_delegator :bar, :baz
     def_delegator :caller, :itself, :c
-
-    class Exception
-    end
   end
 
   def test_backtrace_adjustment
+    obj = Foo.new
+    def (obj.bar = Object.new).baz
+      foo
+    end
     e = assert_raise(NameError) {
-      Foo.new.baz
+      obj.baz
     }
-    assert_not_match(/\/forwardable\.rb/, e.backtrace[0])
+    assert_not_match(/\/forwardable\.rb/, e.backtrace[0],
+                     proc {RubyVM::InstructionSequence.of(obj.method(:baz)).disassemble})
     assert_equal(caller(0, 1)[0], Foo.new.c[0])
   end
 
@@ -251,6 +254,35 @@ class TestForwardable < Test::Unit::TestCase
     assert_raise_with_message(NameError, /`bar'/, bug11616) {
       Foo2.new.baz
     }
+  end
+
+  def test_aref
+    obj = Object.new.extend SingleForwardable
+    obj.instance_variable_set("@h", {foo: 42})
+    obj.def_delegator("@h", :[])
+    assert_equal(42, obj[:foo])
+  end
+
+  def test_aset
+    obj = Object.new.extend SingleForwardable
+    obj.instance_variable_set("@h", h = {foo: 0})
+    obj.def_delegator("@h", :[]=)
+    obj[:foo] = 42
+    assert_equal(42, h[:foo])
+  end
+
+  def test_binop
+    obj = Object.new.extend SingleForwardable
+    obj.instance_variable_set("@h", 40)
+    obj.def_delegator("@h", :+)
+    assert_equal(42, obj+2)
+  end
+
+  def test_uniop
+    obj = Object.new.extend SingleForwardable
+    obj.instance_variable_set("@h", -42)
+    obj.def_delegator("@h", :-@)
+    assert_equal(42, -obj)
   end
 
   private

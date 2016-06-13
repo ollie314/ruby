@@ -41,16 +41,19 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
   def self.read_data
     @@codepoints = []
 
-    downcase  = Hash.new { |h, c| c }
-    upcase    = Hash.new { |h, c| c }
-    titlecase = Hash.new { |h, c| c }
-    casefold  = Hash.new { |h, c| c }
-    turkic_upcase    = Hash.new { |h, c| upcase[c] }
-    turkic_downcase  = Hash.new { |h, c| downcase[c] }
-    turkic_titlecase = Hash.new { |h, c| titlecase[c] }
-    ascii_upcase     = Hash.new { |h, c| c =~ /^[a-zA-Z]$/ ? upcase[c] : c }
-    ascii_downcase   = Hash.new { |h, c| c =~ /^[a-zA-Z]$/ ? downcase[c] : c }
-    ascii_titlecase  = Hash.new { |h, c| c =~ /^[a-zA-Z]$/ ? titlecase[c] : c }
+    downcase  = Hash.new { |h, c| h[c] = c }
+    upcase    = Hash.new { |h, c| h[c] = c }
+    titlecase = Hash.new { |h, c| h[c] = c }
+    casefold  = Hash.new { |h, c| h[c] = c }
+    swapcase  = Hash.new { |h, c| h[c] = c }
+    turkic_upcase    = Hash.new { |h, c| h[c] = upcase[c] }
+    turkic_downcase  = Hash.new { |h, c| h[c] = downcase[c] }
+    turkic_titlecase = Hash.new { |h, c| h[c] = titlecase[c] }
+    turkic_swapcase  = Hash.new { |h, c| h[c] = swapcase[c] }
+    ascii_upcase     = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? upcase[c] : c }
+    ascii_downcase   = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? downcase[c] : c }
+    ascii_titlecase  = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? titlecase[c] : c }
+    ascii_swapcase   = Hash.new { |h, c| h[c] = c=~/^[a-z]$/ ? upcase[c] : (c=~/^[A-Z]$/ ? downcase[c] : c) }
 
     read_data_file('UnicodeData') do |code, data|
       @@codepoints << code
@@ -77,18 +80,44 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
       end
     end
 
+    @@codepoints.each do |c|
+      if upcase[c] != c
+        if downcase[c] != c
+          swapcase[c] = turkic_swapcase[c] =
+            case c
+            when "\u01C5" then "\u0064\u017D"
+            when "\u01C8" then "\u006C\u004A"
+            when "\u01CB" then "\u006E\u004A"
+            when "\u01F2" then "\u0064\u005A"
+            else # Greek
+              downcase[upcase[c][0]] + "\u0399"
+            end
+        else
+          swapcase[c] = upcase[c]
+          turkic_swapcase[c] = turkic_upcase[c]
+        end
+      else
+        if downcase[c] != c
+          swapcase[c] = downcase[c]
+          turkic_swapcase[c] = turkic_downcase[c]
+        end
+      end
+    end
+
     tests = [
       CaseTest.new(:downcase,   [], downcase),
       CaseTest.new(:upcase,     [], upcase),
       CaseTest.new(:capitalize, [], titlecase, downcase),
-      # swapcase?????!!!!!
+      CaseTest.new(:swapcase,   [], swapcase),
       CaseTest.new(:downcase,   [:fold],       casefold),
       CaseTest.new(:upcase,     [:turkic],     turkic_upcase),
       CaseTest.new(:downcase,   [:turkic],     turkic_downcase),
       CaseTest.new(:capitalize, [:turkic],     turkic_titlecase, turkic_downcase),
+      CaseTest.new(:swapcase,   [:turkic],     turkic_swapcase),
       CaseTest.new(:upcase,     [:ascii],      ascii_upcase),
       CaseTest.new(:downcase,   [:ascii],      ascii_downcase),
       CaseTest.new(:capitalize, [:ascii],      ascii_titlecase, ascii_downcase),
+      CaseTest.new(:swapcase,   [:ascii],      ascii_swapcase),
     ]
   end
 
@@ -175,6 +204,18 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
         end
       end
     end
+    define_method "test_#{encoding}_swapcase" do
+      codepoints.each do |code|
+        begin
+          source = code.encode(encoding) * 5
+          target = source.tr('a-zA-Z', 'A-Za-z')
+          result = source.swapcase
+          assert_equal target, result,
+            "from #{code*5} (#{source.dump}) expected #{target.dump} but was #{result.dump}"
+        rescue Encoding::UndefinedConversionError
+        end
+      end
+    end
   end
 
   def check_file_available(filename)
@@ -186,7 +227,6 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
     %w[UnicodeData CaseFolding SpecialCasing].each { |f| check_file_available f }
   end
 
-  generate_ascii_only_case_mapping_tests 'ISO-8859-1'
   generate_ascii_only_case_mapping_tests 'ISO-8859-2'
   generate_ascii_only_case_mapping_tests 'ISO-8859-3'
   generate_ascii_only_case_mapping_tests 'ISO-8859-4'
@@ -215,6 +255,7 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
   generate_ascii_only_case_mapping_tests 'Windows-1254'
   generate_ascii_only_case_mapping_tests 'Windows-1256'
   generate_ascii_only_case_mapping_tests 'Windows-1257'
+  generate_case_mapping_tests 'ISO-8859-1'
   generate_case_mapping_tests 'US-ASCII'
   generate_case_mapping_tests 'ASCII-8BIT'
   generate_case_mapping_tests 'UTF-8'
