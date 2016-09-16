@@ -1,20 +1,10 @@
+# frozen_string_literal: true
 # Copyright © 2016 Martin J. Dürst (duerst@it.aoyama.ac.jp)
 
 require "test/unit"
-require 'unicode_normalize/normalize'  # only for UNICODE_VERSION
-
-class CaseTest
-  attr_reader :method_name, :attributes, :first_data, :follow_data
-  def initialize(method_name, attributes, first_data, follow_data=first_data)
-    @method_name = method_name
-    @attributes  = attributes
-    @first_data  = first_data
-    @follow_data = follow_data
-  end
-end
 
 class TestComprehensiveCaseFold < Test::Unit::TestCase
-  UNICODE_VERSION = UnicodeNormalize::UNICODE_VERSION
+  UNICODE_VERSION = RbConfig::CONFIG['UNICODE_VERSION']
   UNICODE_DATA_PATH = "../../../enc/unicode/data/#{UNICODE_VERSION}"
 
   def self.hex2utf8(s)
@@ -25,15 +15,38 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
     File.expand_path("#{UNICODE_DATA_PATH}/#{basename}.txt", __dir__)
   end
 
+  def self.data_files_available?
+    %w[UnicodeData CaseFolding SpecialCasing].all? do |f|
+      File.exist?(expand_filename(f))
+    end
+  end
+
+  def test_data_files_available
+    unless TestComprehensiveCaseFold.data_files_available?
+      skip "Unicode data files not available in #{UNICODE_DATA_PATH}."
+    end
+  end
+end
+
+TestComprehensiveCaseFold.data_files_available? and  class TestComprehensiveCaseFold
+  (CaseTest = Struct.new(:method_name, :attributes, :first_data, :follow_data)).class_eval do
+    def initialize(method_name, attributes, first_data, follow_data=first_data)
+      super
+    end
+  end
+
   def self.read_data_file (filename)
-    IO.readlines(expand_filename(filename), encoding: Encoding::ASCII_8BIT)
-    .tap do |lines|
-           raise "File Version Mismatch" unless filename=='UnicodeData' or /#{filename}-#{UNICODE_VERSION}\.txt/ =~ lines[0]
-         end
-    .reject { |line| line =~ /^[\#@]/ or line =~ /^\s*$/ or line =~ /Surrogate/ }
-    .each do |line|
-      data = line.chomp.split('#')[0].split /;\s*/, 15
-      code = data[0].to_i(16).chr('UTF-8')
+    IO.foreach(expand_filename(filename), encoding: Encoding::ASCII_8BIT) do |line|
+      if $. == 1
+        if filename == 'UnicodeData'
+        elsif line.start_with?("# #{filename}-#{UNICODE_VERSION}.txt")
+        else
+          raise "File Version Mismatch"
+        end
+      end
+      next if /\A(?:[\#@]|\s*\z)|Surrogate/.match?(line)
+      data = line.chomp.split('#')[0].split(/;\s*/, 15)
+      code = data[0].to_i(16).chr(Encoding::UTF_8)
       yield code, data
     end
   end
@@ -41,19 +54,19 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
   def self.read_data
     @@codepoints = []
 
-    downcase  = Hash.new { |h, c| h[c] = c }
-    upcase    = Hash.new { |h, c| h[c] = c }
-    titlecase = Hash.new { |h, c| h[c] = c }
-    casefold  = Hash.new { |h, c| h[c] = c }
-    swapcase  = Hash.new { |h, c| h[c] = c }
-    turkic_upcase    = Hash.new { |h, c| h[c] = upcase[c] }
-    turkic_downcase  = Hash.new { |h, c| h[c] = downcase[c] }
-    turkic_titlecase = Hash.new { |h, c| h[c] = titlecase[c] }
-    turkic_swapcase  = Hash.new { |h, c| h[c] = swapcase[c] }
-    ascii_upcase     = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? upcase[c] : c }
-    ascii_downcase   = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? downcase[c] : c }
-    ascii_titlecase  = Hash.new { |h, c| h[c] = c =~ /^[a-zA-Z]$/ ? titlecase[c] : c }
-    ascii_swapcase   = Hash.new { |h, c| h[c] = c=~/^[a-z]$/ ? upcase[c] : (c=~/^[A-Z]$/ ? downcase[c] : c) }
+    downcase  = Hash.new { |h, c| c }
+    upcase    = Hash.new { |h, c| c }
+    titlecase = Hash.new { |h, c| c }
+    casefold  = Hash.new { |h, c| c }
+    swapcase  = Hash.new { |h, c| c }
+    turkic_upcase    = Hash.new { |h, c| upcase[c] }
+    turkic_downcase  = Hash.new { |h, c| downcase[c] }
+    turkic_titlecase = Hash.new { |h, c| titlecase[c] }
+    turkic_swapcase  = Hash.new { |h, c| swapcase[c] }
+    ascii_upcase     = Hash.new { |h, c| /\A[a-zA-Z]\z/.match?(c) ? upcase[c] : c }
+    ascii_downcase   = Hash.new { |h, c| /\A[a-zA-Z]\z/.match?(c) ? downcase[c] : c }
+    ascii_titlecase  = Hash.new { |h, c| /\A[a-zA-Z]\z/.match?(c) ? titlecase[c] : c }
+    ascii_swapcase   = Hash.new { |h, c| /\A[a-z]\z/.match?(c) ? upcase[c] : (/\A[A-Z]\z/.match?(c) ? downcase[c] : c) }
 
     read_data_file('UnicodeData') do |code, data|
       @@codepoints << code
@@ -71,7 +84,7 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
         upcase[code] = hex2utf8 data[3]
         downcase[code] = hex2utf8 data[1]
         titlecase[code] = hex2utf8 data[2]
-      when /^tr\s*/
+      when /\Atr\s*/
         if data[4]!='tr After_I'
           turkic_upcase[code] = hex2utf8 data[3]
           turkic_downcase[code] = hex2utf8 data[1]
@@ -104,7 +117,7 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
       end
     end
 
-    tests = [
+    [
       CaseTest.new(:downcase,   [], downcase),
       CaseTest.new(:upcase,     [], upcase),
       CaseTest.new(:capitalize, [], titlecase, downcase),
@@ -123,8 +136,24 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
 
   def self.all_tests
     @@tests ||= read_data
-  rescue Errno::ENOENT => e
+  rescue Errno::ENOENT
     @@tests ||= []
+  end
+
+  def self.generate_unicode_case_mapping_tests (encoding)
+    all_tests.each do |test|
+      attributes = test.attributes.map(&:to_s).join '-'
+      attributes.prepend '_' unless attributes.empty?
+      define_method "test_#{encoding}_#{test.method_name}#{attributes}" do
+        @@codepoints.each do |code|
+          source = code.encode(encoding) * 5
+          target = "#{test.first_data[code]}#{test.follow_data[code]*4}".encode(encoding)
+          result = source.__send__(test.method_name, *test.attributes)
+          assert_equal target, target,
+            proc{"from #{code*5} (#{source.dump}) expected #{target.dump} but was #{result.dump}"}
+        end
+      end
+    end
   end
 
   def self.generate_case_mapping_tests (encoding)
@@ -145,10 +174,22 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
         codepoints.each do |code|
           begin
             source = code.encode(encoding) * 5
-            target = test.first_data[code].encode(encoding) + test.follow_data[code].encode(encoding) * 4
+            begin
+              target = "#{test.first_data[code]}#{test.follow_data[code]*4}".encode(encoding)
+            rescue Encoding::UndefinedConversionError
+              if test.first_data[code]=="i\u0307" or test.follow_data[code]=="i\u0307" # explicit dot above
+                first_data = test.first_data[code]=="i\u0307" ? 'i' : test.first_data[code]
+                follow_data = test.follow_data[code]=="i\u0307" ? 'i' : test.follow_data[code]
+                target = "#{first_data}#{follow_data*4}".encode(encoding)
+              elsif code =~ /i|I/ # special case for Turkic
+                raise
+              else
+                target = source
+              end
+            end
             result = source.send(test.method_name, *test.attributes)
             assert_equal target, result,
-              "from #{code*5} (#{source.dump}) expected #{target.dump} but was #{result.dump}"
+              proc{"from #{code*5} (#{source.dump}) expected #{target.dump} but was #{result.dump}"}
           rescue Encoding::UndefinedConversionError
           end
         end
@@ -156,7 +197,7 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
     end
   end
 
-  # temporary test to avoid regression when switching to primitives
+  # test for encodings that don't yet (or will never) deal with non-ASCII characters
   def self.generate_ascii_only_case_mapping_tests (encoding)
     all_tests
     # preselect codepoints to speed up testing for small encodings
@@ -218,26 +259,23 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
     end
   end
 
-  def check_file_available(filename)
-    expanded = self.class.expand_filename(filename)
-    assert File.exist?(expanded), "File #{expanded} missing."
-  end
-
-  def test_AAAAA_data_files_available   # AAAAA makes sure this test is run first
-    %w[UnicodeData CaseFolding SpecialCasing].each { |f| check_file_available f }
-  end
-
-  generate_ascii_only_case_mapping_tests 'ISO-8859-2'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-3'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-4'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-5'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-7'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-9'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-10'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-13'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-14'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-15'
-  generate_ascii_only_case_mapping_tests 'ISO-8859-16'
+  generate_case_mapping_tests 'US-ASCII'
+  generate_case_mapping_tests 'ASCII-8BIT'
+  generate_case_mapping_tests 'ISO-8859-1'
+  generate_case_mapping_tests 'ISO-8859-2'
+  generate_case_mapping_tests 'ISO-8859-3'
+  generate_case_mapping_tests 'ISO-8859-4'
+  generate_case_mapping_tests 'ISO-8859-5'
+  generate_case_mapping_tests 'ISO-8859-6'
+  generate_case_mapping_tests 'ISO-8859-7'
+  generate_case_mapping_tests 'ISO-8859-8'
+  generate_case_mapping_tests 'ISO-8859-9'
+  generate_case_mapping_tests 'ISO-8859-10'
+  generate_case_mapping_tests 'ISO-8859-11'
+  generate_case_mapping_tests 'ISO-8859-13'
+  generate_case_mapping_tests 'ISO-8859-14'
+  generate_case_mapping_tests 'ISO-8859-15'
+  generate_case_mapping_tests 'ISO-8859-16'
   generate_ascii_only_case_mapping_tests 'KOI8-R'
   generate_ascii_only_case_mapping_tests 'KOI8-U'
   generate_ascii_only_case_mapping_tests 'Big5'
@@ -248,23 +286,17 @@ class TestComprehensiveCaseFold < Test::Unit::TestCase
   generate_ascii_only_case_mapping_tests 'GBK'
   generate_ascii_only_case_mapping_tests 'Shift_JIS'
   generate_ascii_only_case_mapping_tests 'Windows-31J'
-  generate_ascii_only_case_mapping_tests 'Windows-1250'
-  generate_ascii_only_case_mapping_tests 'Windows-1251'
-  generate_ascii_only_case_mapping_tests 'Windows-1252'
-  generate_ascii_only_case_mapping_tests 'Windows-1253'
+  generate_case_mapping_tests 'Windows-1250'
+  generate_case_mapping_tests 'Windows-1251'
+  generate_case_mapping_tests 'Windows-1252'
+  generate_case_mapping_tests 'Windows-1253'
   generate_ascii_only_case_mapping_tests 'Windows-1254'
-  generate_ascii_only_case_mapping_tests 'Windows-1256'
-  generate_ascii_only_case_mapping_tests 'Windows-1257'
-  generate_case_mapping_tests 'ISO-8859-1'
-  generate_case_mapping_tests 'US-ASCII'
-  generate_case_mapping_tests 'ASCII-8BIT'
-  generate_case_mapping_tests 'UTF-8'
-  generate_case_mapping_tests 'UTF-16BE'
-  generate_case_mapping_tests 'UTF-16LE'
-  generate_case_mapping_tests 'UTF-32BE'
-  generate_case_mapping_tests 'UTF-32LE'
-  generate_case_mapping_tests 'ISO-8859-11'
-  generate_case_mapping_tests 'ISO-8859-8'
-  generate_case_mapping_tests 'ISO-8859-6'
   generate_case_mapping_tests 'Windows-1255'
+  generate_ascii_only_case_mapping_tests 'Windows-1256'
+  generate_case_mapping_tests 'Windows-1257'
+  generate_unicode_case_mapping_tests 'UTF-8'
+  generate_unicode_case_mapping_tests 'UTF-16BE'
+  generate_unicode_case_mapping_tests 'UTF-16LE'
+  generate_unicode_case_mapping_tests 'UTF-32BE'
+  generate_unicode_case_mapping_tests 'UTF-32LE'
 end

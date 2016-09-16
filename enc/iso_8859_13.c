@@ -217,6 +217,53 @@ get_case_fold_codes_by_str(OnigCaseFoldType flag,
 	     flag, p, end, items);
 }
 
+static int
+case_map (OnigCaseFoldType* flagP, const OnigUChar** pp,
+					 const OnigUChar* end, OnigUChar* to, OnigUChar* to_end,
+					 const struct OnigEncodingTypeST* enc)
+{
+  OnigCodePoint code;
+  OnigUChar *to_start = to;
+  OnigCaseFoldType flags = *flagP;
+
+  while (*pp<end && to<to_end) {
+    code = *(*pp)++;
+    if (code==SHARP_s) {
+      if (flags&ONIGENC_CASE_UPCASE) {
+	flags |= ONIGENC_CASE_MODIFIED;
+	*to++ = 'S';
+	code = (flags&ONIGENC_CASE_TITLECASE) ? 's' : 'S';
+      }
+      else if (flags&ONIGENC_CASE_FOLD) {
+	flags |= ONIGENC_CASE_MODIFIED;
+	*to++ = 's';
+	code = 's';
+      }
+    }
+    else if ((EncISO_8859_13_CtypeTable[code] & BIT_CTYPE_UPPER)
+	     && (flags & (ONIGENC_CASE_DOWNCASE|ONIGENC_CASE_FOLD))) {
+      flags |= ONIGENC_CASE_MODIFIED;
+      code = ENC_ISO_8859_13_TO_LOWER_CASE(code);
+    }
+    else if (code==0xB5)  ;
+    else if ((EncISO_8859_13_CtypeTable[code]&BIT_CTYPE_LOWER)
+	     && (flags&ONIGENC_CASE_UPCASE)) {
+      flags |= ONIGENC_CASE_MODIFIED;
+      if (code==0xB8 || code==0xBA || code==0xBF) {
+        code -= 0x10;
+      }
+      else {
+        code -= 0x20;
+      }
+    }
+    *to++ = code;
+    if (flags&ONIGENC_CASE_TITLECASE)  /* switch from titlecase to lowercase for capitalize */
+      flags ^= (ONIGENC_CASE_UPCASE|ONIGENC_CASE_DOWNCASE|ONIGENC_CASE_TITLECASE);
+  }
+  *flagP = flags;
+  return (int)(to-to_start);
+}
+
 OnigEncodingDefine(iso_8859_13, ISO_8859_13) = {
   onigenc_single_byte_mbc_enc_len,
   "ISO-8859-13",  /* name */
@@ -236,18 +283,6 @@ OnigEncodingDefine(iso_8859_13, ISO_8859_13) = {
   onigenc_always_true_is_allowed_reverse_match,
   0,
   ONIGENC_FLAG_NONE,
-#ifdef ONIG_CASE_MAPPING
-  onigenc_single_byte_ascii_only_case_map,
-#endif   /* ONIG_CASE_MAPPING */
+  case_map,
 };
 ENC_ALIAS("ISO8859-13", "ISO-8859-13")
-
-/*
- * Name: windows-1257
- * MIBenum: 2257
- * Link: http://www.iana.org/assignments/character-sets
- * Link: http://www.microsoft.com/globaldev/reference/sbcs/1257.mspx
- * Link: http://en.wikipedia.org/wiki/Windows-1257
- */
-ENC_REPLICATE("Windows-1257", "ISO-8859-13")
-ENC_ALIAS("CP1257", "Windows-1257")

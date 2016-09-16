@@ -576,6 +576,57 @@ struct RHash {
 extern void ruby_init_setproctitle(int argc, char *argv[]);
 #endif
 
+#define RSTRUCT_EMBED_LEN_MAX RSTRUCT_EMBED_LEN_MAX
+#define RSTRUCT_EMBED_LEN_MASK RSTRUCT_EMBED_LEN_MASK
+#define RSTRUCT_EMBED_LEN_SHIFT RSTRUCT_EMBED_LEN_SHIFT
+enum {
+    RSTRUCT_EMBED_LEN_MAX = 3,
+    RSTRUCT_EMBED_LEN_MASK = (RUBY_FL_USER2|RUBY_FL_USER1),
+    RSTRUCT_EMBED_LEN_SHIFT = (RUBY_FL_USHIFT+1),
+
+    RSTRUCT_ENUM_END
+};
+
+struct RStruct {
+    struct RBasic basic;
+    union {
+	struct {
+	    long len;
+	    const VALUE *ptr;
+	} heap;
+	const VALUE ary[RSTRUCT_EMBED_LEN_MAX];
+    } as;
+};
+
+#undef RSTRUCT_LEN
+#undef RSTRUCT_PTR
+#undef RSTRUCT_SET
+#undef RSTRUCT_GET
+#define RSTRUCT_EMBED_LEN(st)                               \
+    (long)((RBASIC(st)->flags >> RSTRUCT_EMBED_LEN_SHIFT) & \
+	   (RSTRUCT_EMBED_LEN_MASK >> RSTRUCT_EMBED_LEN_SHIFT))
+#define RSTRUCT_LEN(st) rb_struct_len(st)
+#define RSTRUCT_LENINT(st) rb_long2int(RSTRUCT_LEN(st))
+#define RSTRUCT_CONST_PTR(st) rb_struct_const_ptr(st)
+#define RSTRUCT_PTR(st) ((VALUE *)RSTRUCT_CONST_PTR(RB_OBJ_WB_UNPROTECT_FOR(STRUCT, st)))
+#define RSTRUCT_SET(st, idx, v) RB_OBJ_WRITE(st, &RSTRUCT_CONST_PTR(st)[idx], (v))
+#define RSTRUCT_GET(st, idx)    (RSTRUCT_CONST_PTR(st)[idx])
+#define RSTRUCT(obj) (R_CAST(RStruct)(obj))
+
+static inline long
+rb_struct_len(VALUE st)
+{
+    return (RBASIC(st)->flags & RSTRUCT_EMBED_LEN_MASK) ?
+	RSTRUCT_EMBED_LEN(st) : RSTRUCT(st)->as.heap.len;
+}
+
+static inline const VALUE *
+rb_struct_const_ptr(VALUE st)
+{
+    return FIX_CONST_VALUE_PTR((RBASIC(st)->flags & RSTRUCT_EMBED_LEN_MASK) ?
+	RSTRUCT(st)->as.ary : RSTRUCT(st)->as.heap.ptr);
+}
+
 /* class.c */
 
 struct rb_deprecated_classext_struct {
@@ -685,15 +736,15 @@ struct RIMemo {
 };
 
 enum imemo_type {
-    imemo_none = 0,
-    imemo_cref = 1,
-    imemo_svar = 2,
+    imemo_env        = 0,
+    imemo_cref       = 1,
+    imemo_svar       = 2,
     imemo_throw_data = 3,
-    imemo_ifunc = 4,
-    imemo_memo = 5,
-    imemo_ment = 6,
-    imemo_iseq = 7,
-    imemo_mask = 0x07
+    imemo_ifunc      = 4,
+    imemo_memo       = 5,
+    imemo_ment       = 6,
+    imemo_iseq       = 7,
+    imemo_mask       = 0x07
 };
 
 static inline enum imemo_type
@@ -761,8 +812,8 @@ struct MEMO {
     } u3;
 };
 
-#define MEMO_V1_SET(m, v) RB_OBJ_WRITE((memo), &(memo)->v1, (v))
-#define MEMO_V2_SET(m, v) RB_OBJ_WRITE((memo), &(memo)->v2, (v))
+#define MEMO_V1_SET(m, v) RB_OBJ_WRITE((m), &(m)->v1, (v))
+#define MEMO_V2_SET(m, v) RB_OBJ_WRITE((m), &(m)->v2, (v))
 
 #define MEMO_CAST(m) ((struct MEMO *)m)
 
@@ -779,6 +830,11 @@ struct MEMO {
    MEMO_FOR(type, value))
 
 #define STRING_P(s) (RB_TYPE_P((s), T_STRING) && CLASS_OF(s) == rb_cString)
+
+#ifdef RUBY_INTEGER_UNIFICATION
+# define rb_cFixnum rb_cInteger
+# define rb_cBignum rb_cInteger
+#endif
 
 enum {
     cmp_opt_Fixnum,
@@ -889,15 +945,17 @@ int rb_class_has_methods(VALUE c);
 VALUE rb_invcmp(VALUE, VALUE);
 
 /* compile.c */
-struct rb_block_struct;
-int rb_dvar_defined(ID, const struct rb_block_struct *);
-int rb_local_defined(ID, const struct rb_block_struct *);
+struct rb_block;
+int rb_dvar_defined(ID, const struct rb_block *);
+int rb_local_defined(ID, const struct rb_block *);
 CONSTFUNC(const char * rb_insns_name(int i));
 VALUE rb_insns_name_array(void);
 
 /* complex.c */
-VALUE rb_nucomp_add(VALUE, VALUE);
-VALUE rb_nucomp_mul(VALUE, VALUE);
+VALUE rb_complex_plus(VALUE, VALUE);
+VALUE rb_complex_mul(VALUE, VALUE);
+VALUE rb_complex_abs(VALUE x);
+VALUE rb_complex_sqrt(VALUE x);
 
 /* cont.c */
 VALUE rb_obj_is_fiber(VALUE);
@@ -1042,6 +1100,7 @@ st_table *rb_init_identtable_with_size(st_index_t size);
 VALUE rb_hash_keys(VALUE hash);
 VALUE rb_hash_values(VALUE hash);
 VALUE rb_hash_rehash(VALUE hash);
+int rb_hash_add_new_element(VALUE hash, VALUE key, VALUE val);
 #define HASH_DELETED  FL_USER1
 #define HASH_PROC_DEFAULT FL_USER2
 
@@ -1078,9 +1137,7 @@ VALUE rb_math_hypot(VALUE, VALUE);
 VALUE rb_math_log(int argc, const VALUE *argv);
 VALUE rb_math_sin(VALUE);
 VALUE rb_math_sinh(VALUE);
-#if 0
 VALUE rb_math_sqrt(VALUE);
-#endif
 
 /* newline.c */
 void Init_newline(void);
@@ -1193,8 +1250,8 @@ struct RBasicRaw {
     VALUE klass;
 };
 
-#define RBASIC_CLEAR_CLASS(obj)        (((struct RBasicRaw *)((VALUE)(obj)))->klass = 0)
-#define RBASIC_SET_CLASS_RAW(obj, cls) (((struct RBasicRaw *)((VALUE)(obj)))->klass = (cls))
+#define RBASIC_CLEAR_CLASS(obj)        memset(&(((struct RBasicRaw *)((VALUE)(obj)))->klass), 0, sizeof(VALUE))
+#define RBASIC_SET_CLASS_RAW(obj, cls) memcpy(&((struct RBasicRaw *)((VALUE)(obj)))->klass, &(cls), sizeof(VALUE))
 #define RBASIC_SET_CLASS(obj, cls)     do { \
     VALUE _obj_ = (obj); \
     RB_OBJ_WRITE(_obj_, &((struct RBasicRaw *)(_obj_))->klass, cls); \
@@ -1206,7 +1263,7 @@ struct RBasicRaw {
 #endif
 VALUE rb_parser_get_yydebug(VALUE);
 VALUE rb_parser_set_yydebug(VALUE, VALUE);
-VALUE rb_parser_set_context(VALUE, const struct rb_block_struct *, int);
+VALUE rb_parser_set_context(VALUE, const struct rb_block *, int);
 void *rb_parser_load_file(VALUE parser, VALUE name);
 int rb_is_const_name(VALUE name);
 int rb_is_class_name(VALUE name);
@@ -1351,6 +1408,7 @@ VALUE rb_id_quote_unprintable(ID);
 #define QUOTE(str) rb_str_quote_unprintable(str)
 #define QUOTE_ID(id) rb_id_quote_unprintable(id)
 char *rb_str_fill_terminator(VALUE str, const int termlen);
+void rb_str_change_terminator_length(VALUE str, const int oldtermlen, const int termlen);
 VALUE rb_str_locktmp_ensure(VALUE str, VALUE (*func)(VALUE), VALUE arg);
 #ifdef RUBY_ENCODING_H
 VALUE rb_external_str_with_enc(VALUE str, rb_encoding *eenc);
@@ -1365,7 +1423,7 @@ VALUE rb_enc_str_scrub(rb_encoding *enc, VALUE str, VALUE repl);
 #define is_ascii_string(str) (rb_enc_str_coderange(str) == ENC_CODERANGE_7BIT)
 #define is_broken_string(str) (rb_enc_str_coderange(str) == ENC_CODERANGE_BROKEN)
 size_t rb_str_memsize(VALUE);
-VALUE rb_sym_proc_call(VALUE args, VALUE sym, int argc, const VALUE *argv, VALUE passed_proc);
+VALUE rb_sym_proc_call(ID mid, int argc, const VALUE *argv, VALUE passed_proc);
 VALUE rb_sym_to_proc(VALUE sym);
 
 /* symbol.c */
@@ -1440,6 +1498,7 @@ VALUE rb_search_class_path(VALUE);
 VALUE rb_attr_delete(VALUE, ID);
 VALUE rb_ivar_lookup(VALUE obj, ID id, VALUE undef);
 void rb_autoload_str(VALUE mod, ID id, VALUE file);
+void rb_deprecate_constant(VALUE mod, const char *name);
 
 /* version.c */
 extern const char ruby_engine[];
@@ -1533,6 +1592,12 @@ VALUE rb_str2big_gmp(VALUE arg, int base, int badcheck);
 
 /* error.c (export) */
 int rb_bug_reporter_add(void (*func)(FILE *, void *), void *data);
+NORETURN(void rb_unexpected_type(VALUE,int));
+#undef Check_Type
+#define Check_Type(v, t) \
+    (!RB_TYPE_P((VALUE)(v), (t)) || \
+     ((t) == RUBY_T_DATA && RTYPEDDATA_P(v)) ? \
+     rb_unexpected_type((VALUE)(v), (t)) : (void)0)
 
 /* file.c (export) */
 #ifdef HAVE_READLINK

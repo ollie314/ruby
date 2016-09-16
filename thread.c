@@ -587,10 +587,12 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start, VALUE *register_stack_s
 		if (!th->first_func) {
 		    GetProcPtr(th->first_proc, proc);
 		    th->errinfo = Qnil;
-		    th->root_lep = rb_vm_ep_local_ep(proc->block.ep);
+		    th->root_lep = rb_vm_ep_local_ep(vm_proc_ep(th->first_proc));
 		    th->root_svar = Qfalse;
 		    EXEC_EVENT_HOOK(th, RUBY_EVENT_THREAD_BEGIN, th->self, 0, 0, Qundef);
-		    th->value = rb_vm_invoke_proc(th, proc, (int)RARRAY_LEN(args), RARRAY_CONST_PTR(args), 0);
+		    th->value = rb_vm_invoke_proc(th, proc,
+						  (int)RARRAY_LEN(args), RARRAY_CONST_PTR(args),
+						  VM_BLOCK_HANDLER_NONE);
 		    EXEC_EVENT_HOOK(th, RUBY_EVENT_THREAD_END, th->self, 0, 0, Qundef);
 		}
 		else {
@@ -1085,7 +1087,7 @@ getclockofday(struct timeval *tp)
 
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
 	tp->tv_sec = ts.tv_sec;
-	tp->tv_usec = ts.tv_nsec / 1000;
+	tp->tv_usec = (int)(ts.tv_nsec / 1000);
     }
     else
 #endif
@@ -2082,6 +2084,8 @@ rb_threadptr_ready(rb_thread_t *th)
     rb_threadptr_interrupt(th);
 }
 
+void rb_threadptr_setup_exception(rb_thread_t *th, VALUE mesg, VALUE cause);
+
 static VALUE
 rb_threadptr_raise(rb_thread_t *th, int argc, VALUE *argv)
 {
@@ -2097,6 +2101,7 @@ rb_threadptr_raise(rb_thread_t *th, int argc, VALUE *argv)
     else {
 	exc = rb_make_exception(argc, argv);
     }
+    rb_threadptr_setup_exception(GET_THREAD(), exc, Qundef);
     rb_threadptr_pending_interrupt_enque(th, exc);
     rb_threadptr_interrupt(th);
     return Qnil;
@@ -2737,7 +2742,7 @@ rb_thread_group(VALUE thread)
 }
 
 static const char *
-thread_status_name(rb_thread_t *th)
+thread_status_name(rb_thread_t *th, int detail)
 {
     switch (th->status) {
       case THREAD_RUNNABLE:
@@ -2745,8 +2750,9 @@ thread_status_name(rb_thread_t *th)
 	    return "aborting";
 	else
 	    return "run";
-      case THREAD_STOPPED:
       case THREAD_STOPPED_FOREVER:
+	if (detail) return "sleep_forever";
+      case THREAD_STOPPED:
 	return "sleep";
       case THREAD_KILLED:
 	return "dead";
@@ -2806,7 +2812,7 @@ rb_thread_status(VALUE thread)
 	}
 	return Qfalse;
     }
-    return rb_str_new2(thread_status_name(th));
+    return rb_str_new2(thread_status_name(th, FALSE));
 }
 
 
@@ -2952,7 +2958,7 @@ rb_thread_inspect(VALUE thread)
     VALUE str;
 
     GetThreadPtr(thread, th);
-    status = thread_status_name(th);
+    status = thread_status_name(th, TRUE);
     str = rb_sprintf("#<%"PRIsVALUE":%p", cname, (void *)thread);
     if (!NIL_P(th->name)) {
 	rb_str_catf(str, "@%"PRIsVALUE, th->name);
@@ -3850,6 +3856,7 @@ rb_wait_for_single_fd(int fd, int events, struct timeval *tv)
     fds.events = (short)events;
 
     do {
+	fds.revents = 0;
 	lerrno = 0;
 	BLOCKING_REGION({
 	    result = ppoll(&fds, 1, timeout, NULL);
@@ -4850,27 +4857,42 @@ ruby_native_thread_p(void)
     return th != 0;
 }
 
+VALUE rb_vm_backtrace_str_ary(rb_thread_t *th, long lev, long n);
 static void
-debug_deadlock_check(rb_vm_t *vm)
+debug_deadlock_check(rb_vm_t *vm, VALUE msg)
 {
-#ifdef DEBUG_DEADLOCK_CHECK
     rb_thread_t *th = 0;
+    VALUE sep = rb_str_new_cstr("\n   ");
 
-    printf("%d %d %p %p\n", vm_living_thread_num(vm), vm->sleeper, GET_THREAD(), vm->main_thread);
+    rb_str_catf(msg, "\n%d threads, %d sleeps current:%p main thread:%p\n",
+	    vm_living_thread_num(vm), vm->sleeper, GET_THREAD(), vm->main_thread);
     list_for_each(&vm->living_threads, th, vmlt_node) {
-	printf("th:%p %d %d", th, th->status, th->interrupt_flag);
+	rb_str_catf(msg, "* %+"PRIsVALUE"\n   rb_thread_t:%p "
+		    "native:%"PRI_THREAD_ID" int:%u",
+		    th->self, th, thread_id_str(th), th->interrupt_flag);
 	if (th->locking_mutex) {
 	    rb_mutex_t *mutex;
+	    struct rb_thread_struct volatile *mth;
+	    int waiting;
 	    GetMutexPtr(th->locking_mutex, mutex);
 
 	    native_mutex_lock(&mutex->lock);
-	    printf(" %p %d\n", mutex->th, mutex->cond_waiting);
+	    mth = mutex->th;
+	    waiting = mutex->cond_waiting;
 	    native_mutex_unlock(&mutex->lock);
+	    rb_str_catf(msg, " mutex:%p cond:%d", mth, waiting);
 	}
-	else
-	    puts("");
+	{
+	    rb_thread_list_t *list = th->join_list;
+	    while (list) {
+		rb_str_catf(msg, "\n    depended by: tb_thread_id:%p", list->th);
+		list = list->next;
+	    }
+	}
+	rb_str_catf(msg, "\n   ");
+	rb_str_concat(msg, rb_ary_join(rb_vm_backtrace_str_ary(th, 0, 0), sep));
+	rb_str_catf(msg, "\n");
     }
-#endif
 }
 
 static void
@@ -4905,7 +4927,7 @@ rb_check_deadlock(rb_vm_t *vm)
 	VALUE argv[2];
 	argv[0] = rb_eFatal;
 	argv[1] = rb_str_new2("No live threads left. Deadlock?");
-	debug_deadlock_check(vm);
+	debug_deadlock_check(vm, argv[1]);
 	vm->sleeper--;
 	rb_threadptr_raise(vm->main_thread, 2, argv);
     }

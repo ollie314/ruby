@@ -547,6 +547,7 @@ Init_class_hierarchy(void)
 {
     rb_cBasicObject = boot_defclass("BasicObject", 0);
     rb_cObject = boot_defclass("Object", rb_cBasicObject);
+    rb_gc_register_mark_object(rb_cObject);
 
     /* resolve class name ASAP for order-independence */
     rb_class_name(rb_cObject);
@@ -854,11 +855,7 @@ rb_include_module(VALUE klass, VALUE module)
     int changed = 0;
 
     rb_frozen_class_p(klass);
-
-    if (!RB_TYPE_P(module, T_MODULE)) {
-	Check_Type(module, T_MODULE);
-    }
-
+    Check_Type(module, T_MODULE);
     OBJ_INFECT(klass, module);
 
     changed = include_modules_at(klass, RCLASS_ORIGIN(klass), module, TRUE);
@@ -970,9 +967,7 @@ rb_prepend_module(VALUE klass, VALUE module)
     int changed = 0;
 
     rb_frozen_class_p(klass);
-
     Check_Type(module, T_MODULE);
-
     OBJ_INFECT(klass, module);
 
     origin = RCLASS_ORIGIN(klass);
@@ -1095,46 +1090,51 @@ rb_mod_ancestors(VALUE mod)
     return ary;
 }
 
-static int
-ins_methods_push(ID name, rb_method_visibility_t visi, VALUE ary, rb_method_visibility_t expected_visi)
+static void
+ins_methods_push(st_data_t name, st_data_t ary)
 {
-    if (visi == METHOD_VISI_UNDEF) return ST_CONTINUE;
+    rb_ary_push((VALUE)ary, ID2SYM((ID)name));
+}
 
-    switch (expected_visi) {
+static int
+ins_methods_i(st_data_t name, st_data_t type, st_data_t ary)
+{
+    switch ((rb_method_visibility_t)type) {
       case METHOD_VISI_UNDEF:
-	if (visi != METHOD_VISI_PRIVATE) rb_ary_push(ary, ID2SYM(name));
-	break;
       case METHOD_VISI_PRIVATE:
-      case METHOD_VISI_PROTECTED:
-      case METHOD_VISI_PUBLIC:
-	if (visi == expected_visi) rb_ary_push(ary, ID2SYM(name));
+	break;
+      default: /* everything but private */
+	ins_methods_push(name, ary);
 	break;
     }
     return ST_CONTINUE;
 }
 
 static int
-ins_methods_i(st_data_t name, st_data_t type, st_data_t ary)
-{
-    return ins_methods_push((ID)name, (rb_method_visibility_t)type, (VALUE)ary, METHOD_VISI_UNDEF); /* everything but private */
-}
-
-static int
 ins_methods_prot_i(st_data_t name, st_data_t type, st_data_t ary)
 {
-    return ins_methods_push((ID)name, (rb_method_visibility_t)type, (VALUE)ary, METHOD_VISI_PROTECTED);
+    if ((rb_method_visibility_t)type == METHOD_VISI_PROTECTED) {
+	ins_methods_push(name, ary);
+    }
+    return ST_CONTINUE;
 }
 
 static int
 ins_methods_priv_i(st_data_t name, st_data_t type, st_data_t ary)
 {
-    return ins_methods_push((ID)name, (rb_method_visibility_t)type, (VALUE)ary, METHOD_VISI_PRIVATE);
+    if ((rb_method_visibility_t)type == METHOD_VISI_PRIVATE) {
+	ins_methods_push(name, ary);
+    }
+    return ST_CONTINUE;
 }
 
 static int
 ins_methods_pub_i(st_data_t name, st_data_t type, st_data_t ary)
 {
-    return ins_methods_push((ID)name, (rb_method_visibility_t)type, (VALUE)ary, METHOD_VISI_PUBLIC);
+    if ((rb_method_visibility_t)type == METHOD_VISI_PUBLIC) {
+	ins_methods_push(name, ary);
+    }
+    return ST_CONTINUE;
 }
 
 struct method_entry_arg {
@@ -1591,7 +1591,9 @@ singleton_class_of(VALUE obj)
     klass = RBASIC(obj)->klass;
     if (!(FL_TEST(klass, FL_SINGLETON) &&
 	  rb_ivar_get(klass, id_attached) == obj)) {
+	rb_serial_t serial = RCLASS_SERIAL(klass);
 	klass = rb_make_metaclass(obj, klass);
+	RCLASS_SERIAL(klass) = serial;
     }
 
     if (OBJ_TAINTED(obj)) {

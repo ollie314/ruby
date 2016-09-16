@@ -58,7 +58,7 @@ getlocal
 (VALUE val)
 {
     int i, lev = (int)level;
-    VALUE *ep = GET_EP();
+    const VALUE *ep = GET_EP();
 
     /* optimized insns generated for level == (0|1) in defs/opt_operand.def */
     for (i = 0; i < lev; i++) {
@@ -81,13 +81,13 @@ setlocal
 ()
 {
     int i, lev = (int)level;
-    VALUE *ep = GET_EP();
+    const VALUE *ep = GET_EP();
 
     /* optimized insns generated for level == (0|1) in defs/opt_operand.def */
     for (i = 0; i < lev; i++) {
 	ep = GET_PREV_EP(ep);
     }
-    *(ep - idx) = val;
+    vm_env_write(ep, -(int)idx, val);
 }
 
 /**
@@ -173,6 +173,7 @@ setclassvariable
 (VALUE val)
 ()
 {
+    vm_ensure_not_refinement_module(GET_SELF());
     rb_cvar_set(vm_get_cvar_base(rb_vm_get_cref(GET_EP()), GET_CFP()), id, val);
 }
 
@@ -217,6 +218,7 @@ setconstant
 ()
 {
     vm_check_if_namespace(cbase);
+    vm_ensure_not_refinement_module(GET_SELF());
     rb_const_set(cbase, id, val);
 }
 
@@ -417,7 +419,7 @@ toregexp
     rb_num_t i;
     const VALUE ary = rb_ary_tmp_new(cnt);
     for (i = 0; i < cnt; i++) {
-        rb_ary_store(ary, cnt-i-1, TOPN(i));
+	rb_ary_store(ary, cnt-i-1, TOPN(i));
     }
     POPN(cnt);
     val = rb_reg_new_ary(ary, (int)opt);
@@ -790,7 +792,7 @@ checkkeyword
 	ret = (bits & (0x01 << keyword_index)) ? Qfalse : Qtrue;
     }
     else {
-	assert(RB_TYPE_P(kw_bits, T_HASH));
+	VM_ASSERT(RB_TYPE_P(kw_bits, T_HASH));
 	ret = rb_hash_has_key(kw_bits, INT2FIX(keyword_index)) ? Qfalse : Qtrue;
     }
 }
@@ -809,24 +811,24 @@ trace
     rb_event_flag_t flag = (rb_event_flag_t)nf;
 
     if (RUBY_DTRACE_METHOD_ENTRY_ENABLED() ||
-        RUBY_DTRACE_METHOD_RETURN_ENABLED() ||
-        RUBY_DTRACE_CMETHOD_ENTRY_ENABLED() ||
-        RUBY_DTRACE_CMETHOD_RETURN_ENABLED()) {
+	RUBY_DTRACE_METHOD_RETURN_ENABLED() ||
+	RUBY_DTRACE_CMETHOD_ENTRY_ENABLED() ||
+	RUBY_DTRACE_CMETHOD_RETURN_ENABLED()) {
 
-        switch (flag) {
-          case RUBY_EVENT_CALL:
-            RUBY_DTRACE_METHOD_ENTRY_HOOK(th, 0, 0);
-            break;
-          case RUBY_EVENT_C_CALL:
-            RUBY_DTRACE_CMETHOD_ENTRY_HOOK(th, 0, 0);
-            break;
-          case RUBY_EVENT_RETURN:
-            RUBY_DTRACE_METHOD_RETURN_HOOK(th, 0, 0);
-            break;
-          case RUBY_EVENT_C_RETURN:
-            RUBY_DTRACE_CMETHOD_RETURN_HOOK(th, 0, 0);
-            break;
-        }
+	switch (flag) {
+	  case RUBY_EVENT_CALL:
+	    RUBY_DTRACE_METHOD_ENTRY_HOOK(th, 0, 0);
+	    break;
+	  case RUBY_EVENT_C_CALL:
+	    RUBY_DTRACE_CMETHOD_ENTRY_HOOK(th, 0, 0);
+	    break;
+	  case RUBY_EVENT_RETURN:
+	    RUBY_DTRACE_METHOD_RETURN_HOOK(th, 0, 0);
+	    break;
+	  case RUBY_EVENT_C_RETURN:
+	    RUBY_DTRACE_CMETHOD_RETURN_HOOK(th, 0, 0);
+	    break;
+	}
     }
 
     EXEC_EVENT_HOOK(th, flag, GET_SELF(), 0, 0 /* id and klass are resolved at callee */,
@@ -932,11 +934,11 @@ defineclass
     rb_iseq_check(class_iseq);
 
     /* enter scope */
-    vm_push_frame(th, class_iseq, VM_FRAME_MAGIC_CLASS, klass,
-		  VM_ENVVAL_BLOCK_PTR(GET_BLOCK_PTR()),
+    vm_push_frame(th, class_iseq, VM_FRAME_MAGIC_CLASS | VM_ENV_FLAG_LOCAL, klass,
+		  GET_BLOCK_HANDLER(),
 		  (VALUE)vm_cref_push(th, klass, NULL, FALSE),
 		  class_iseq->body->iseq_encoded, GET_SP(),
-		  class_iseq->body->local_size,
+		  class_iseq->body->local_table_size,
 		  class_iseq->body->stack_max);
     RESTORE_REGS();
     NEXT_INSN();
@@ -1059,7 +1061,7 @@ opt_send_without_block
 (VALUE val) // inc += -ci->orig_argc;
 {
     struct rb_calling_info calling;
-    calling.blockptr = NULL;
+    calling.block_handler = VM_BLOCK_HANDLER_NONE;
     vm_search_method(ci, cc, calling.recv = TOPN(calling.argc = ci->orig_argc));
     CALL_METHOD(&calling, ci, cc);
 }
@@ -1097,7 +1099,7 @@ invokeblock
 {
     struct rb_calling_info calling;
     calling.argc = ci->orig_argc;
-    calling.blockptr = NULL;
+    calling.block_handler = VM_BLOCK_HANDLER_NONE;
     calling.recv = GET_SELF();
 
     val = vm_invoke_block(th, GET_CFP(), &calling, ci);
@@ -1128,9 +1130,7 @@ leave
 
     RUBY_VM_CHECK_INTS(th);
 
-    if (UNLIKELY(VM_FRAME_TYPE_FINISH_P(GET_CFP()))) {
-	vm_pop_frame(th);
-
+    if (vm_pop_frame(th, GET_CFP(), GET_EP())) {
 #if OPT_CALL_THREADED_CODE
 	th->retval = val;
 	return 0;
@@ -1139,7 +1139,6 @@ leave
 #endif
     }
     else {
-	vm_pop_frame(th);
 	RESTORE_REGS();
     }
 }
@@ -1381,18 +1380,13 @@ opt_plus
 	BASIC_OP_UNREDEFINED_P(BOP_PLUS,INTEGER_REDEFINED_OP_FLAG)) {
 	/* fixnum + fixnum */
 #ifndef LONG_LONG_VALUE
-	val = (recv + (obj & (~1)));
-	if ((~(recv ^ obj) & (recv ^ val)) &
-	    ((VALUE)0x01 << ((sizeof(VALUE) * CHAR_BIT) - 1))) {
-	    val = rb_big_plus(rb_int2big(FIX2LONG(recv)),
-			      rb_int2big(FIX2LONG(obj)));
+	VALUE msb = (VALUE)1 << ((sizeof(VALUE) * CHAR_BIT) - 1);
+	val = recv - 1 + obj;
+	if ((~(recv ^ obj) & (recv ^ val)) & msb) {
+	    val = rb_int2big((SIGNED_VALUE)((val>>1) | (recv & msb)));
 	}
 #else
-	long a, b, c;
-	a = FIX2LONG(recv);
-	b = FIX2LONG(obj);
-	c = a + b;
-	val = LONG2NUM(c);
+	val = LONG2NUM(FIX2LONG(recv) + FIX2LONG(obj));
 #endif
     }
     else if (FLONUM_2_P(recv, obj) &&
@@ -2046,12 +2040,12 @@ opt_succ
     if (SPECIAL_CONST_P(recv)) {
 	if (FIXNUM_P(recv) &&
 	    BASIC_OP_UNREDEFINED_P(BOP_SUCC, INTEGER_REDEFINED_OP_FLAG)) {
-	    const VALUE obj = INT2FIX(1);
 	    /* fixnum + INT2FIX(1) */
-	    val = (recv + (obj & (~1)));
-	    if ((~(recv ^ obj) & (recv ^ val)) & ((unsigned long)LONG_MAX + 1)) {
-		val = rb_big_plus(rb_int2big(FIX2LONG(recv)),
-				  rb_int2big(FIX2LONG(obj)));
+	    if (recv != LONG2FIX(FIXNUM_MAX)) {
+		val = recv - 1 + INT2FIX(1);
+	    }
+	    else {
+		val = LONG2NUM(FIXNUM_MAX + 1);
 	    }
 	}
 	else {

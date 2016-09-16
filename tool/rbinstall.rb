@@ -1,5 +1,8 @@
 #!./miniruby
 
+# Used by the "make install" target to install Ruby.
+# See common.mk for more details.
+
 begin
   load "./rbconfig.rb"
 rescue LoadError
@@ -415,16 +418,16 @@ install?(:doc, :capi) do
   install_recursive "doc/capi", docdir+"/capi", :mode => $data_mode
 end
 
-if load_relative
+if load_relative or /\s/ =~ bindir
   PROLOG_SCRIPT = <<EOS
 #!/bin/sh\n# -*- ruby -*-
-bindir="${0%/*}"
+bindir="#{load_relative ? '${0%/*}' : bindir.gsub(/\"/, '\\\\"')}"
 EOS
   if CONFIG["LIBRUBY_RELATIVE"] != 'yes' and libpathenv = CONFIG["LIBPATHENV"]
     pathsep = File::PATH_SEPARATOR
     PROLOG_SCRIPT << <<EOS
-prefix="${bindir%/bin}"
-export #{libpathenv}="$prefix/lib${#{libpathenv}:+#{pathsep}$#{libpathenv}}"
+libdir="#{load_relative ? '${bindir%/bin}/lib' : libdir.gsub(/\"/, '\\\\"')}"
+export #{libpathenv}="$libdir${#{libpathenv}:+#{pathsep}$#{libpathenv}}"
 EOS
   end
   PROLOG_SCRIPT << %Q[exec "$bindir/#{ruby_install_name}" -x "$0" "$@"\n]
@@ -675,6 +678,9 @@ module RbInstall
 
     def write_cache_file
     end
+
+    def build_extensions
+    end
   end
 end
 
@@ -721,7 +727,7 @@ install?(:ext, :comm, :gem) do
     end
 
     unless gemspec.executables.empty? then
-      bin_dir = File.join(gem_dir, 'gems', full_name, 'bin')
+      bin_dir = File.join(gem_dir, 'gems', full_name, gemspec.bindir)
       makedirs(bin_dir)
 
       execs = gemspec.executables.map {|exec| File.join(srcdir, 'bin', exec)}
@@ -747,11 +753,26 @@ install?(:ext, :comm, :gem) do
     :wrappers => true,
     :format_executable => true,
   }
-  Gem::Specification.each_spec([srcdir+'/gems/*']) do |spec|
+  gem_ext_dir = "#$extout/gems/#{CONFIG['arch']}"
+  extensions_dir = Gem::StubSpecification.gemspec_stub("", gem_dir, gem_dir).extensions_dir
+  Gem::Specification.each_gemspec([srcdir+'/gems/*']) do |path|
+    dir = File.dirname(path)
+    spec = Dir.chdir(dir) {
+      Gem::Specification.load(File.basename(path))
+    }
+    next unless spec.platform == Gem::Platform::RUBY
+    next unless spec.full_name == path[srcdir.size..-1][/\A\/gems\/([^\/]+)/, 1]
+    spec.extension_dir = "#{extensions_dir}/#{spec.full_name}"
+    if File.directory?(ext = "#{gem_ext_dir}/#{spec.full_name}")
+      spec.extensions[0] ||= "-"
+    end
     ins = RbInstall::UnpackedInstaller.new(spec, options)
     puts "#{" "*30}#{spec.name} #{spec.version}"
     ins.install
     File.chmod($data_mode, File.join(install_dir, "specifications", "#{spec.full_name}.gemspec"))
+    unless spec.extensions.empty?
+      install_recursive(ext, spec.extension_dir)
+    end
     installed_gems[spec.full_name] = true
   end
   installed_gems, gems = Dir.glob(srcdir+'/gems/*.gem').partition {|gem| installed_gems.key?(File.basename(gem, '.gem'))}
@@ -761,8 +782,15 @@ install?(:ext, :comm, :gem) do
   next if gems.empty?
   if defined?(Zlib)
     Gem.instance_variable_set(:@ruby, with_destdir(File.join(bindir, ruby_install_name)))
+    silent = Gem::SilentUI.new
     gems.each do |gem|
-      Gem.install(gem, Gem::Requirement.default, options)
+      inst = Gem::Installer.new(gem, options)
+      inst.spec.extension_dir = with_destdir(inst.spec.extension_dir)
+      begin
+        Gem::DefaultUserInteraction.use_ui(silent) {inst.install}
+      rescue Gem::InstallError => e
+        next
+      end
       gemname = File.basename(gem)
       puts "#{" "*30}#{gemname}"
     end

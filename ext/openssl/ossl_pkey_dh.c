@@ -175,8 +175,10 @@ ossl_dh_s_generate(int argc, VALUE *argv, VALUE klass)
 }
 
 /*
- *  call-seq:
- *     DH.new([size [, generator] | string]) -> dh
+ * call-seq:
+ *   DH.new -> dh
+ *   DH.new(string) -> dh
+ *   DH.new(size [, generator]) -> dh
  *
  * Either generates a DH instance from scratch or by reading already existing
  * DH parameters from +string+. Note that when reading a DH instance from
@@ -210,11 +212,11 @@ ossl_dh_initialize(int argc, VALUE *argv, VALUE self)
     if(rb_scan_args(argc, argv, "02", &arg, &gen) == 0) {
       dh = DH_new();
     }
-    else if (FIXNUM_P(arg)) {
+    else if (RB_INTEGER_TYPE_P(arg)) {
 	if (!NIL_P(gen)) {
 	    g = NUM2INT(gen);
 	}
-	if (!(dh = dh_generate(FIX2INT(arg), g))) {
+	if (!(dh = dh_generate(NUM2INT(arg), g))) {
 	    ossl_raise(eDHError, NULL);
 	}
     }
@@ -238,6 +240,39 @@ ossl_dh_initialize(int argc, VALUE *argv, VALUE self)
     return self;
 }
 
+static VALUE
+ossl_dh_initialize_copy(VALUE self, VALUE other)
+{
+    EVP_PKEY *pkey;
+    DH *dh, *dh_other;
+    const BIGNUM *pub, *priv;
+
+    GetPKey(self, pkey);
+    if (EVP_PKEY_base_id(pkey) != EVP_PKEY_NONE)
+	ossl_raise(eDHError, "DH already initialized");
+    GetDH(other, dh_other);
+
+    dh = DHparams_dup(dh_other);
+    if (!dh)
+	ossl_raise(eDHError, "DHparams_dup");
+    EVP_PKEY_assign_DH(pkey, dh);
+
+    DH_get0_key(dh_other, &pub, &priv);
+    if (pub) {
+	BIGNUM *pub2 = BN_dup(pub);
+	BIGNUM *priv2 = BN_dup(priv);
+
+	if (!pub2 || priv && !priv2) {
+	    BN_clear_free(pub2);
+	    BN_clear_free(priv2);
+	    ossl_raise(eDHError, "BN_dup");
+	}
+	DH_set0_key(dh, pub2, priv2);
+    }
+
+    return self;
+}
+
 /*
  *  call-seq:
  *     dh.public? -> true | false
@@ -249,7 +284,7 @@ static VALUE
 ossl_dh_is_public(VALUE self)
 {
     DH *dh;
-    BIGNUM *bn;
+    const BIGNUM *bn;
 
     GetDH(self, dh);
     DH_get0_key(dh, &bn, NULL);
@@ -268,7 +303,7 @@ static VALUE
 ossl_dh_is_private(VALUE self)
 {
     DH *dh;
-    BIGNUM *bn;
+    const BIGNUM *bn;
 
     GetDH(self, dh);
     DH_get0_key(dh, NULL, &bn);
@@ -352,7 +387,7 @@ ossl_dh_get_params(VALUE self)
 {
     DH *dh;
     VALUE hash;
-    BIGNUM *p, *q, *g, *pub_key, *priv_key;
+    const BIGNUM *p, *q, *g, *pub_key, *priv_key;
 
     GetDH(self, dh);
     DH_get0_pqg(dh, &p, &q, &g);
@@ -492,13 +527,13 @@ ossl_dh_generate_key(VALUE self)
  *
  * === Parameters
  * * +pub_bn+ is a OpenSSL::BN, *not* the DH instance returned by
- * DH#public_key as that contains the DH parameters only.
+ *   DH#public_key as that contains the DH parameters only.
  */
 static VALUE
 ossl_dh_compute_key(VALUE self, VALUE pub)
 {
     DH *dh;
-    BIGNUM *pub_key, *dh_p;
+    const BIGNUM *pub_key, *dh_p;
     VALUE str;
     int len;
 
@@ -517,7 +552,21 @@ ossl_dh_compute_key(VALUE self, VALUE pub)
     return str;
 }
 
+/*
+ * Document-method: OpenSSL::PKey::DH#set_pqg
+ * call-seq:
+ *   dh.set_pqg(p, q, g) -> self
+ *
+ * Sets +p+, +q+, +g+ for the DH instance.
+ */
 OSSL_PKEY_BN_DEF3(dh, DH, pqg, p, q, g)
+/*
+ * Document-method: OpenSSL::PKey::DH#set_key
+ * call-seq:
+ *   dh.set_key(pub_key, priv_key) -> self
+ *
+ * Sets +pub_key+ and +priv_key+ for the DH instance. +priv_key+ may be nil.
+ */
 OSSL_PKEY_BN_DEF2(dh, DH, key, pub_key, priv_key)
 
 /*
@@ -527,8 +576,9 @@ void
 Init_ossl_dh(void)
 {
 #if 0
-    mOSSL = rb_define_module("OpenSSL"); /* let rdoc know about mOSSL and mPKey */
     mPKey = rb_define_module_under(mOSSL, "PKey");
+    cPKey = rb_define_class_under(mPKey, "PKey", rb_cObject);
+    ePKeyError = rb_define_class_under(mPKey, "PKeyError", eOSSLError);
 #endif
 
     /* Document-class: OpenSSL::PKey::DHError
@@ -545,15 +595,15 @@ Init_ossl_dh(void)
      * on.
      *
      * === Accessor methods for the Diffie-Hellman parameters
-     * * DH#p
-     * The prime (an OpenSSL::BN) of the Diffie-Hellman parameters.
-     * * DH#g
-     * The generator (an OpenSSL::BN) g of the Diffie-Hellman parameters.
-     * * DH#pub_key
-     * The per-session public key (an OpenSSL::BN) matching the private key.
-     * This needs to be passed to DH#compute_key.
-     * * DH#priv_key
-     * The per-session private key, an OpenSSL::BN.
+     * DH#p::
+     *   The prime (an OpenSSL::BN) of the Diffie-Hellman parameters.
+     * DH#g::
+     *   The generator (an OpenSSL::BN) g of the Diffie-Hellman parameters.
+     * DH#pub_key::
+     *   The per-session public key (an OpenSSL::BN) matching the private key.
+     *   This needs to be passed to DH#compute_key.
+     * DH#priv_key::
+     *   The per-session private key, an OpenSSL::BN.
      *
      * === Example of a key exchange
      *  dh1 = OpenSSL::PKey::DH.new(2048)
@@ -568,6 +618,7 @@ Init_ossl_dh(void)
     cDH = rb_define_class_under(mPKey, "DH", cPKey);
     rb_define_singleton_method(cDH, "generate", ossl_dh_s_generate, -1);
     rb_define_method(cDH, "initialize", ossl_dh_initialize, -1);
+    rb_define_copy_func(cDH, ossl_dh_initialize_copy);
     rb_define_method(cDH, "public?", ossl_dh_is_public, 0);
     rb_define_method(cDH, "private?", ossl_dh_is_private, 0);
     rb_define_method(cDH, "to_text", ossl_dh_to_text, 0);

@@ -1639,8 +1639,8 @@ rb_hash_replace(VALUE hash, VALUE hash2)
 
 /*
  *  call-seq:
- *     hsh.length    ->  fixnum
- *     hsh.size      ->  fixnum
+ *     hsh.length    ->  integer
+ *     hsh.size      ->  integer
  *
  *  Returns the number of key-value pairs in the hash.
  *
@@ -1750,7 +1750,8 @@ each_pair_i(VALUE key, VALUE value)
 static int
 each_pair_i_fast(VALUE key, VALUE value)
 {
-    rb_yield_values(2, key, value);
+    VALUE argv[2] = {key, value};
+    rb_yield_values2(2, argv);
     return ST_CONTINUE;
 }
 
@@ -1784,6 +1785,70 @@ rb_hash_each_pair(VALUE hash)
 	rb_hash_foreach(hash, each_pair_i_fast, 0);
     else
 	rb_hash_foreach(hash, each_pair_i, 0);
+    return hash;
+}
+
+static int
+transform_values_i(VALUE key, VALUE value, VALUE result)
+{
+    VALUE new_value = rb_yield(value);
+    rb_hash_aset(result, key, new_value);
+    return ST_CONTINUE;
+}
+
+/*
+ *  call-seq:
+ *     hsh.transform_values {|value| block } -> hsh
+ *     hsh.transform_values                  -> an_enumerator
+ *
+ *  Return a new with the results of running block once for every value.
+ *  This method does not change the keys.
+ *
+ *     h = { a: 1, b: 2, c: 3 }
+ *     h.transform_values {|v| v * v + 1 }  #=> { a: 2, b: 5, c: 10 }
+ *     h.transform_values(&:to_s)           #=> { a: "1", b: "2", c: "3" }
+ *     h.transform_values.with_index {|v, i| "#{v}.#{i}" }
+ *                                          #=> { a: "1.0", b: "2.1", c: "3.2" }
+ *
+ *  If no block is given, an enumerator is returned instead.
+ */
+static VALUE
+rb_hash_transform_values(VALUE hash)
+{
+    VALUE result;
+
+    RETURN_SIZED_ENUMERATOR(hash, 0, 0, hash_enum_size);
+    result = rb_hash_new();
+    if (!RHASH_EMPTY_P(hash)) {
+        rb_hash_foreach(hash, transform_values_i, result);
+    }
+
+    return result;
+}
+
+/*
+ *  call-seq:
+ *     hsh.transform_values! {|value| block } -> hsh
+ *     hsh.transform_values!                  -> an_enumerator
+ *
+ *  Return a new with the results of running block once for every value.
+ *  This method does not change the keys.
+ *
+ *     h = { a: 1, b: 2, c: 3 }
+ *     h.transform_values! {|v| v * v + 1 }  #=> { a: 2, b: 5, c: 10 }
+ *     h.transform_values!(&:to_s)           #=> { a: "1", b: "2", c: "3" }
+ *     h.transform_values!.with_index {|v, i| "#{v}.#{i}" }
+ *                                           #=> { a: "1.0", b: "2.1", c: "3.2" }
+ *
+ *  If no block is given, an enumerator is returned instead.
+ */
+static VALUE
+rb_hash_transform_values_bang(VALUE hash)
+{
+    RETURN_SIZED_ENUMERATOR(hash, 0, 0, hash_enum_size);
+    rb_hash_modify_check(hash);
+    if (RHASH(hash)->ntbl)
+        rb_hash_foreach(hash, transform_values_i, hash);
     return hash;
 }
 
@@ -2192,7 +2257,7 @@ hash_i(VALUE key, VALUE val, VALUE arg)
 
 /*
  *  call-seq:
- *     hsh.hash   -> fixnum
+ *     hsh.hash   -> integer
  *
  *  Compute a hash-code for this hash. Two hashes with the same content
  *  will have the same hash code (and will compare using <code>eql?</code>).
@@ -2588,10 +2653,10 @@ rb_hash_flatten(int argc, VALUE *argv, VALUE hash)
 	rb_hash_foreach(hash, flatten_i, ary);
 	if (level - 1 > 0) {
 	    *argv = INT2FIX(level - 1);
-	    rb_funcall2(ary, id_flatten_bang, argc, argv);
+	    rb_funcallv(ary, id_flatten_bang, argc, argv);
 	}
 	else if (level < 0) {
-	    rb_funcall2(ary, id_flatten_bang, 0, 0);
+	    rb_funcallv(ary, id_flatten_bang, 0, 0);
 	}
     }
     else {
@@ -2862,6 +2927,30 @@ rb_hash_to_proc(VALUE hash)
     return rb_func_proc_new(hash_proc_call, hash);
 }
 
+static int
+add_new_i(st_data_t *key, st_data_t *val, st_data_t arg, int existing)
+{
+    VALUE *args = (VALUE *)arg;
+    if (existing) return ST_STOP;
+    RB_OBJ_WRITTEN(args[0], Qundef, (VALUE)*key);
+    RB_OBJ_WRITE(args[0], (VALUE *)val, args[1]);
+    return ST_CONTINUE;
+}
+
+/*
+ * add +key+ to +val+ pair if +hash+ does not contain +key+.
+ * returns non-zero if +key+ was contained.
+ */
+int
+rb_hash_add_new_element(VALUE hash, VALUE key, VALUE val)
+{
+    st_table *tbl = rb_hash_tbl_raw(hash);
+    VALUE args[2];
+    args[0] = hash;
+    args[1] = val;
+    return st_update(tbl, (st_data_t)key, add_new_i, (st_data_t)args);
+}
+
 static int path_tainted = -1;
 
 static char **origenviron;
@@ -2872,17 +2961,21 @@ static char **my_environ;
 #undef environ
 #define environ my_environ
 #undef getenv
-static inline char *
-w32_getenv(const char *name)
+static char *(*w32_getenv)(const char*);
+static char *
+w32_getenv_unknown(const char *name)
 {
-    static int binary = -1;
-    static int locale = -1;
-    if (binary < 0) {
-	binary = rb_ascii8bit_encindex();
-	locale = rb_locale_encindex();
+    char *(*func)(const char*);
+    if (rb_locale_encindex() == rb_ascii8bit_encindex()) {
+	func = rb_w32_getenv;
     }
-    return locale == binary ? rb_w32_getenv(name) : rb_w32_ugetenv(name);
+    else {
+	func = rb_w32_ugetenv;
+    }
+    /* atomic assignment in flat memory model */
+    return (w32_getenv = func)(name);
 }
+static char *(*w32_getenv)(const char*) = w32_getenv_unknown;
 #define getenv(n) w32_getenv(n)
 #elif defined(__APPLE__)
 #undef environ
@@ -2912,29 +3005,29 @@ env_str_transcode(VALUE str, rb_encoding *enc)
 #endif
 
 static VALUE
-env_str_new(const char *ptr, long len)
+env_enc_str_new(const char *ptr, long len, rb_encoding *enc)
 {
 #ifdef _WIN32
-    VALUE str = env_str_transcode(rb_utf8_str_new(ptr, len), rb_locale_encoding());
+    VALUE str = env_str_transcode(rb_utf8_str_new(ptr, len), enc);
 #else
-    VALUE str = rb_locale_str_new(ptr, len);
+    VALUE str = rb_external_str_new_with_enc(ptr, len, enc);
 #endif
 
+    OBJ_TAINT(str);
     rb_obj_freeze(str);
     return str;
 }
 
 static VALUE
-env_path_str_new(const char *ptr)
+env_enc_str_new_cstr(const char *ptr, rb_encoding *enc)
 {
-#ifdef _WIN32
-    VALUE str = env_str_transcode(rb_utf8_str_new_cstr(ptr), rb_filesystem_encoding());
-#else
-    VALUE str = rb_filesystem_str_new_cstr(ptr);
-#endif
+    return env_enc_str_new(ptr, strlen(ptr), enc);
+}
 
-    rb_obj_freeze(str);
-    return str;
+static VALUE
+env_str_new(const char *ptr, long len)
+{
+    return env_enc_str_new(ptr, len, rb_locale_encoding());
 }
 
 static VALUE
@@ -2942,6 +3035,25 @@ env_str_new2(const char *ptr)
 {
     if (!ptr) return Qnil;
     return env_str_new(ptr, strlen(ptr));
+}
+
+static int env_path_tainted(const char *);
+
+static rb_encoding *
+env_encoding_for(const char *name, const char *ptr)
+{
+    if (ENVMATCH(name, PATH_ENV) && !env_path_tainted(ptr)) {
+	return rb_filesystem_encoding();
+    }
+    else {
+	return rb_locale_encoding();
+    }
+}
+
+static VALUE
+env_name_new(const char *name, const char *ptr)
+{
+    return env_enc_str_new_cstr(ptr, env_encoding_for(name, ptr));
 }
 
 static void *
@@ -3032,8 +3144,6 @@ env_delete_m(VALUE obj, VALUE name)
     return val;
 }
 
-static int env_path_tainted(const char *);
-
 /*
  * call-seq:
  *   ENV[name] -> value
@@ -3049,10 +3159,7 @@ rb_f_getenv(VALUE obj, VALUE name)
     nam = env_name(name);
     env = getenv(nam);
     if (env) {
-	if (ENVMATCH(nam, PATH_ENV) && !env_path_tainted(env)) {
-	    return env_path_str_new(env);
-	}
-	return env_str_new2(env);
+	return env_name_new(nam, env);
     }
     return Qnil;
 }
@@ -3093,9 +3200,7 @@ env_fetch(int argc, VALUE *argv)
 	}
 	return argv[1];
     }
-    if (ENVMATCH(nam, PATH_ENV) && !env_path_tainted(env))
-	return env_path_str_new(env);
-    return env_str_new2(env);
+    return env_name_new(nam, env);
 }
 
 static void
@@ -3246,8 +3351,6 @@ ruby_setenv(const char *name, const char *value)
 	invalid_envname(name);
     }
 #elif defined(HAVE_SETENV) && defined(HAVE_UNSETENV)
-#undef setenv
-#undef unsetenv
     if (value) {
 	if (setenv(name, value, 1))
 	    rb_sys_fail_str(rb_sprintf("setenv(%s)", name));
@@ -3875,7 +3978,7 @@ env_assoc(VALUE env, VALUE key)
 
     s = env_name(key);
     e = getenv(s);
-    if (e) return rb_assoc_new(key, rb_tainted_str_new2(e));
+    if (e) return rb_assoc_new(key, env_str_new2(e));
     return Qnil;
 }
 
@@ -4295,6 +4398,9 @@ Init_Hash(void)
     rb_define_method(rb_cHash,"each_key", rb_hash_each_key, 0);
     rb_define_method(rb_cHash,"each_pair", rb_hash_each_pair, 0);
     rb_define_method(rb_cHash,"each", rb_hash_each_pair, 0);
+
+    rb_define_method(rb_cHash, "transform_values", rb_hash_transform_values, 0);
+    rb_define_method(rb_cHash, "transform_values!", rb_hash_transform_values_bang, 0);
 
     rb_define_method(rb_cHash,"keys", rb_hash_keys, 0);
     rb_define_method(rb_cHash,"values", rb_hash_values, 0);

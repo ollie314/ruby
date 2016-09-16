@@ -45,6 +45,9 @@ extern "C" {
 #ifndef NOINLINE
 # define NOINLINE(x) x
 #endif
+#ifndef ALWAYS_INLINE
+# define ALWAYS_INLINE(x) x
+#endif
 #ifndef ERRORFUNC
 # define HAVE_ATTRIBUTE_ERRORFUNC 0
 # define ERRORFUNC(mesg, x) x
@@ -130,7 +133,7 @@ extern "C" {
 # include <sys/select.h>
 #endif
 
-#if defined HAVE_SETJMPEX_H && defined HAVE__SETJMPEX
+#ifdef RUBY_USE_SETJMPEX
 #include <setjmpex.h>
 #endif
 

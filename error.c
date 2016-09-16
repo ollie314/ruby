@@ -106,16 +106,16 @@ rb_syntax_error_append(VALUE exc, VALUE file, int line, int column,
     }
     else {
 	VALUE mesg;
-	const char *pre = NULL;
 	if (NIL_P(exc)) {
 	    mesg = rb_enc_str_new(0, 0, enc);
 	    exc = rb_class_new_instance(1, &mesg, rb_eSyntaxError);
 	}
 	else {
 	    mesg = rb_attr_get(exc, idMesg);
-	    pre = "\n";
+	    if (RSTRING_LEN(mesg) > 0 && *(RSTRING_END(mesg)-1) != '\n')
+		rb_str_cat_cstr(mesg, "\n");
 	}
-	err_vcatf(mesg, pre, fn, line, fmt, args);
+	err_vcatf(mesg, NULL, fn, line, fmt, args);
     }
 
     return exc;
@@ -553,32 +553,58 @@ rb_builtin_class_name(VALUE x)
     return etype;
 }
 
+NORETURN(static void unexpected_type(VALUE, int, int));
+#define UNDEF_LEAKED "undef leaked to the Ruby space"
+
+static void
+unexpected_type(VALUE x, int xt, int t)
+{
+    const char *tname = rb_builtin_type_name(t);
+    VALUE mesg, exc = rb_eFatal;
+
+    if (tname) {
+	const char *cname = builtin_class_name(x);
+	if (cname)
+	    mesg = rb_sprintf("wrong argument type %s (expected %s)",
+			      cname, tname);
+	else
+	    mesg = rb_sprintf("wrong argument type %"PRIsVALUE" (expected %s)",
+			      rb_obj_class(x), tname);
+	exc = rb_eTypeError;
+    }
+    else if (xt > T_MASK && xt <= 0x3f) {
+	mesg = rb_sprintf("unknown type 0x%x (0x%x given, probably comes"
+			  " from extension library for ruby 1.8)", t, xt);
+    }
+    else {
+	mesg = rb_sprintf("unknown type 0x%x (0x%x given)", t, xt);
+    }
+    rb_exc_raise(rb_exc_new_str(exc, mesg));
+}
+
 void
 rb_check_type(VALUE x, int t)
 {
     int xt;
 
     if (x == Qundef) {
-	rb_bug("undef leaked to the Ruby space");
+	rb_bug(UNDEF_LEAKED);
     }
 
     xt = TYPE(x);
     if (xt != t || (xt == T_DATA && RTYPEDDATA_P(x))) {
-	const char *tname = rb_builtin_type_name(t);
-	if (tname) {
-	    const char *cname = builtin_class_name(x);
-	    if (cname)
-		rb_raise(rb_eTypeError, "wrong argument type %s (expected %s)",
-			 cname, tname);
-	    else
-		rb_raise(rb_eTypeError, "wrong argument type %"PRIsVALUE" (expected %s)",
-			 rb_obj_class(x), tname);
-	}
-	if (xt > T_MASK && xt <= 0x3f) {
-	    rb_fatal("unknown type 0x%x (0x%x given, probably comes from extension library for ruby 1.8)", t, xt);
-	}
-	rb_bug("unknown type 0x%x (0x%x given)", t, xt);
+	unexpected_type(x, xt, t);
     }
+}
+
+void
+rb_unexpected_type(VALUE x, int t)
+{
+    if (x == Qundef) {
+	rb_bug(UNDEF_LEAKED);
+    }
+
+    unexpected_type(x, TYPE(x), t);
 }
 
 int
@@ -1024,7 +1050,7 @@ exit_initialize(int argc, VALUE *argv, VALUE exc)
 
 /*
  * call-seq:
- *   system_exit.status   -> fixnum
+ *   system_exit.status   -> integer
  *
  * Return the status value associated with this system exit.
  */
@@ -1531,7 +1557,7 @@ syserr_initialize(int argc, VALUE *argv, VALUE self)
 
 /*
  * call-seq:
- *   system_call_error.errno   -> fixnum
+ *   system_call_error.errno   -> integer
  *
  * Return this SystemCallError's error number.
  */

@@ -785,6 +785,9 @@ class TestRefinement < Test::Unit::TestCase
   eval PrependAfterRefine_CODE
 
   def test_prepend_after_refine_wb_miss
+    if /\A(arm|mips)/ =~ RUBY_PLATFORM
+      skip "too slow cpu"
+    end
     assert_normal_exit %Q{
       GC.stress = true
       10.times{
@@ -1620,6 +1623,71 @@ class TestRefinement < Test::Unit::TestCase
     assert_raise(NoMethodError) do
       MethodMissing.call_undefined_method
     end
+  end
+
+  module VisibleRefinements
+    module RefA
+      refine Object do
+        def in_ref_a
+        end
+      end
+    end
+
+    module RefB
+      refine Object do
+        def in_ref_b
+        end
+      end
+    end
+
+    module RefC
+      using RefA
+
+      refine Object do
+        def in_ref_c
+        end
+      end
+    end
+
+    module Foo
+      using RefB
+      USED_MODS = Module.used_modules
+    end
+
+    module Bar
+      using RefC
+      USED_MODS = Module.used_modules
+    end
+
+    module Combined
+      using RefA
+      using RefB
+      USED_MODS = Module.used_modules
+    end
+  end
+
+  def test_used_modules
+    ref = VisibleRefinements
+    assert_equal [], Module.used_modules
+    assert_equal [ref::RefB], ref::Foo::USED_MODS
+    assert_equal [ref::RefC], ref::Bar::USED_MODS
+    assert_equal [ref::RefB, ref::RefA], ref::Combined::USED_MODS
+  end
+
+  def test_warn_setconst_in_refinmenet
+    bug10103 = '[ruby-core:64143] [Bug #10103]'
+    warnings = [
+      "-:3: warning: not defined at the refinement, but at the outer class/module",
+      "-:4: warning: not defined at the refinement, but at the outer class/module"
+    ]
+    assert_in_out_err([], <<-INPUT, [], warnings, bug10103)
+      module M
+        refine String do
+          FOO = 123
+          @@foo = 456
+        end
+      end
+    INPUT
   end
 
   private

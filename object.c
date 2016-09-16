@@ -145,7 +145,7 @@ rb_obj_equal(VALUE obj1, VALUE obj2)
 #if 0
 /*
  * call-seq:
- *    obj.hash    -> fixnum
+ *    obj.hash    -> integer
  *
  * Generates a Fixnum hash value for this object.  This function must have the
  * property that <code>a.eql?(b)</code> implies <code>a.hash == b.hash</code>.
@@ -299,11 +299,12 @@ init_copy(VALUE dest, VALUE obj)
 
 /*
  *  call-seq:
- *     obj.clone -> an_object
+ *     obj.clone(freeze: true) -> an_object
  *
  *  Produces a shallow copy of <i>obj</i>---the instance variables of
  *  <i>obj</i> are copied, but not the objects they reference.
- *  <code>clone</code> copies the frozen and tainted state of <i>obj</i>.
+ *  <code>clone</code> copies the frozen (unless :freeze keyword argument
+ *  is given with a false value) and tainted state of <i>obj</i>.
  *  See also the discussion under <code>Object#dup</code>.
  *
  *     class Klass
@@ -321,11 +322,28 @@ init_copy(VALUE dest, VALUE obj)
  *  the class.
  */
 
-VALUE
-rb_obj_clone(VALUE obj)
+static VALUE
+rb_obj_clone2(int argc, VALUE *argv, VALUE obj)
 {
+    static ID keyword_ids[1];
+    VALUE opt;
+    VALUE kwargs[1];
     VALUE clone;
     VALUE singleton;
+    VALUE kwfreeze = Qtrue;
+
+    if (!keyword_ids[0]) {
+	CONST_ID(keyword_ids[0], "freeze");
+    }
+    rb_scan_args(argc, argv, "0:", &opt);
+    if (!NIL_P(opt)) {
+	rb_get_kwargs(opt, keyword_ids, 0, 1, kwargs);
+	kwfreeze = kwargs[0];
+	if (kwfreeze != Qundef && kwfreeze != Qtrue && kwfreeze != Qfalse) {
+	    rb_raise(rb_eArgError, "unexpected value for freeze: %s",
+		     rb_builtin_class_name(kwfreeze));
+	}
+    }
 
     if (rb_special_const_p(obj)) {
         rb_raise(rb_eTypeError, "can't clone %s", rb_obj_classname(obj));
@@ -342,9 +360,18 @@ rb_obj_clone(VALUE obj)
 
     init_copy(clone, obj);
     rb_funcall(clone, id_init_clone, 1, obj);
-    RBASIC(clone)->flags |= RBASIC(obj)->flags & FL_FREEZE;
+
+    if (Qfalse != kwfreeze) {
+	RBASIC(clone)->flags |= RBASIC(obj)->flags & FL_FREEZE;
+    }
 
     return clone;
+}
+
+VALUE
+rb_obj_clone(VALUE obj)
+{
+    return rb_obj_clone2(0, NULL, obj);
 }
 
 /*
@@ -1523,7 +1550,7 @@ rb_mod_freeze(VALUE mod)
  *     mod === obj    -> true or false
  *
  *  Case Equality---Returns <code>true</code> if <i>obj</i> is an
- *  instance of <i>mod</i> or and instance of one of <i>mod</i>'s descendants.
+ *  instance of <i>mod</i> or an instance of one of <i>mod</i>'s descendants.
  *  Of limited use for modules, but can be used in <code>case</code> statements
  *  to classify objects by class.
  */
@@ -1674,7 +1701,7 @@ rb_class_s_alloc(VALUE klass)
  *
  *  Creates a new anonymous module. If a block is given, it is passed
  *  the module object, and the block is evaluated in the context of this
- *  module using <code>module_eval</code>.
+ *  module like <code>module_eval</code>.
  *
  *     fred = Module.new do
  *       def meth1
@@ -1723,7 +1750,7 @@ rb_mod_initialize_clone(VALUE clone, VALUE orig)
  *  class a name by assigning the class object to a constant.
  *
  *  If a block is given, it is passed the class object, and the block
- *  is evaluated in the context of this class using
+ *  is evaluated in the context of this class like
  *  <code>class_eval</code>.
  *
  *     fred = Class.new do
@@ -3424,7 +3451,7 @@ InitVM_Object(void)
 
     rb_define_method(rb_mKernel, "class", rb_obj_class, 0);
     rb_define_method(rb_mKernel, "singleton_class", rb_obj_singleton_class, 0);
-    rb_define_method(rb_mKernel, "clone", rb_obj_clone, 0);
+    rb_define_method(rb_mKernel, "clone", rb_obj_clone2, -1);
     rb_define_method(rb_mKernel, "dup", rb_obj_dup, 0);
     rb_define_method(rb_mKernel, "itself", rb_obj_itself, 0);
     rb_define_method(rb_mKernel, "initialize_copy", rb_obj_init_copy, 1);
@@ -3485,9 +3512,10 @@ InitVM_Object(void)
     rb_undef_alloc_func(rb_cNilClass);
     rb_undef_method(CLASS_OF(rb_cNilClass), "new");
     /*
-     * An alias of +nil+
+     * An obsolete alias of +nil+
      */
     rb_define_global_const("NIL", Qnil);
+    rb_deprecate_constant(rb_cObject, "NIL");
 
     rb_define_method(rb_cModule, "freeze", rb_mod_freeze, 0);
     rb_define_method(rb_cModule, "===", rb_mod_eqq, 1);
@@ -3554,7 +3582,7 @@ InitVM_Object(void)
      * Document-class: Data
      *
      * This is a recommended base class for C extensions using Data_Make_Struct
-     * or Data_Wrap_Struct, see README.EXT for details.
+     * or Data_Wrap_Struct, see doc/extension.rdoc for details.
      */
     rb_cData = rb_define_class("Data", rb_cObject);
     rb_undef_alloc_func(rb_cData);
@@ -3569,9 +3597,10 @@ InitVM_Object(void)
     rb_undef_alloc_func(rb_cTrueClass);
     rb_undef_method(CLASS_OF(rb_cTrueClass), "new");
     /*
-     * An alias of +true+
+     * An obsolete alias of +true+
      */
     rb_define_global_const("TRUE", Qtrue);
+    rb_deprecate_constant(rb_cObject, "TRUE");
 
     rb_cFalseClass = rb_define_class("FalseClass", rb_cObject);
     rb_define_method(rb_cFalseClass, "to_s", false_to_s, 0);
@@ -3583,9 +3612,10 @@ InitVM_Object(void)
     rb_undef_alloc_func(rb_cFalseClass);
     rb_undef_method(CLASS_OF(rb_cFalseClass), "new");
     /*
-     * An alias of +false+
+     * An obsolete alias of +false+
      */
     rb_define_global_const("FALSE", Qfalse);
+    rb_deprecate_constant(rb_cObject, "FALSE");
 }
 
 void

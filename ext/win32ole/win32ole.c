@@ -26,7 +26,7 @@
 const IID IID_IMultiLanguage2 = {0xDCCFC164, 0x2B38, 0x11d2, {0xB7, 0xEC, 0x00, 0xC0, 0x4F, 0x8F, 0x5D, 0x9A}};
 #endif
 
-#define WIN32OLE_VERSION "1.8.4"
+#define WIN32OLE_VERSION "1.8.5"
 
 typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
     (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
@@ -383,7 +383,7 @@ static /* [local] */ HRESULT ( STDMETHODCALLTYPE Invoke )(
             mid = rb_intern("value");
         }
     }
-    v = rb_funcall2(p->obj, mid, args, parg);
+    v = rb_funcallv(p->obj, mid, args, parg);
     ole_val2variant(v, pVarResult);
     return S_OK;
 }
@@ -1270,7 +1270,16 @@ ole_val2variant(VALUE val, VARIANT *var)
         break;
     case T_FIXNUM:
         V_VT(var) = VT_I4;
-        V_I4(var) = NUM2INT(val);
+        {
+            long v = NUM2LONG(val);
+            V_I4(var) = (LONG)v;
+#if SIZEOF_LONG > 4
+            if (V_I4(var) != v) {
+                V_I8(var) = v;
+                V_VT(var) = VT_I8;
+            }
+#endif
+        }
         break;
     case T_BIGNUM:
         V_VT(var) = VT_R8;

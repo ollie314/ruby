@@ -1533,6 +1533,10 @@ nogvl_fsync(void *ptr)
 {
     rb_io_t *fptr = ptr;
 
+#ifdef _WIN32
+    if (GetFileType((HANDLE)rb_w32_get_osfhandle(fptr->fd)) != FILE_TYPE_DISK)
+	return 0;
+#endif
     return (VALUE)fsync(fptr->fd);
 }
 #endif
@@ -1935,6 +1939,10 @@ nogvl_fdatasync(void *ptr)
 {
     rb_io_t *fptr = ptr;
 
+#ifdef _WIN32
+    if (GetFileType((HANDLE)rb_w32_get_osfhandle(fptr->fd)) != FILE_TYPE_DISK)
+	return 0;
+#endif
     return (VALUE)fdatasync(fptr->fd);
 }
 
@@ -1972,8 +1980,8 @@ rb_io_fdatasync(VALUE io)
 
 /*
  *  call-seq:
- *     ios.fileno    -> fixnum
- *     ios.to_i      -> fixnum
+ *     ios.fileno    -> integer
+ *     ios.to_i      -> integer
  *
  *  Returns an integer representing the numeric file descriptor for
  *  <em>ios</em>.
@@ -1996,7 +2004,7 @@ rb_io_fileno(VALUE io)
 
 /*
  *  call-seq:
- *     ios.pid    -> fixnum
+ *     ios.pid    -> integer
  *
  *  Returns the process ID of a child process associated with
  *  <em>ios</em>. This will be set by <code>IO.popen</code>.
@@ -3011,11 +3019,16 @@ rb_io_getline_fast(rb_io_t *fptr, rb_encoding *enc)
     return str;
 }
 
+struct getline_arg {
+    VALUE io;
+    VALUE rs;
+    long limit;
+};
+
 static void
-prepare_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit, VALUE io)
+extract_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit)
 {
     VALUE rs = rb_rs, lim = Qnil;
-    rb_io_t *fptr;
 
     rb_check_arity(argc, 0, 2);
     if (argc == 1) {
@@ -3033,6 +3046,16 @@ prepare_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit, VALUE io)
         if (!NIL_P(rs))
             StringValue(rs);
     }
+    *rsp = rs;
+    *limit = NIL_P(lim) ? -1L : NUM2LONG(lim);
+}
+
+static void
+check_getline_args(VALUE *rsp, long *limit, VALUE io)
+{
+    rb_io_t *fptr;
+    VALUE rs = *rsp;
+
     if (!NIL_P(rs)) {
 	rb_encoding *enc_rs, *enc_io;
 
@@ -3045,6 +3068,7 @@ prepare_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit, VALUE io)
             if (rs == rb_default_rs) {
                 rs = rb_enc_str_new(0, 0, enc_io);
                 rb_str_buf_cat_ascii(rs, "\n");
+		*rsp = rs;
             }
             else {
                 rb_raise(rb_eArgError, "encoding mismatch: %s IO with %s RS",
@@ -3053,8 +3077,13 @@ prepare_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit, VALUE io)
             }
 	}
     }
-    *rsp = rs;
-    *limit = NIL_P(lim) ? -1L : NUM2LONG(lim);
+}
+
+static void
+prepare_getline_args(int argc, VALUE *argv, VALUE *rsp, long *limit, VALUE io)
+{
+    extract_getline_args(argc, argv, rsp, limit);
+    check_getline_args(rsp, limit, io);
 }
 
 static VALUE
@@ -3326,6 +3355,8 @@ rb_io_readline(int argc, VALUE *argv, VALUE io)
     return line;
 }
 
+static VALUE io_readlines(VALUE rs, long limit, VALUE io);
+
 /*
  *  call-seq:
  *     ios.readlines(sep=$/)     -> array
@@ -3347,10 +3378,18 @@ rb_io_readline(int argc, VALUE *argv, VALUE io)
 static VALUE
 rb_io_readlines(int argc, VALUE *argv, VALUE io)
 {
-    VALUE line, ary, rs;
+    VALUE rs;
     long limit;
 
     prepare_getline_args(argc, argv, &rs, &limit, io);
+    return io_readlines(rs, limit, io);
+}
+
+static VALUE
+io_readlines(VALUE rs, long limit, VALUE io)
+{
+    VALUE line, ary;
+
     if (limit == 0)
 	rb_raise(rb_eArgError, "invalid limit: 0 for readlines");
     ary = rb_ary_new();
@@ -3803,7 +3842,7 @@ rb_io_readchar(VALUE io)
 
 /*
  *  call-seq:
- *     ios.getbyte   -> fixnum or nil
+ *     ios.getbyte   -> integer or nil
  *
  *  Gets the next 8-bit byte (0..255) from <em>ios</em>. Returns
  *  <code>nil</code> if called at end of file.
@@ -3840,7 +3879,7 @@ rb_io_getbyte(VALUE io)
 
 /*
  *  call-seq:
- *     ios.readbyte   -> fixnum
+ *     ios.readbyte   -> integer
  *
  *  Reads a byte as with <code>IO#getbyte</code>, but raises an
  *  <code>EOFError</code> on end of file.
@@ -6399,7 +6438,7 @@ rb_io_s_open(int argc, VALUE *argv, VALUE klass)
 
 /*
  *  call-seq:
- *     IO.sysopen(path, [mode, [perm]])  -> fixnum
+ *     IO.sysopen(path, [mode, [perm]])  -> integer
  *
  *  Opens the given path, returning the underlying file descriptor as a
  *  <code>Fixnum</code>.
@@ -6575,7 +6614,7 @@ rb_f_open(int argc, VALUE *argv)
 	}
     }
     if (redirect) {
-	VALUE io = rb_funcall2(argv[0], to_open, argc-1, argv+1);
+	VALUE io = rb_funcallv(argv[0], to_open, argc-1, argv+1);
 
 	if (rb_block_given_p()) {
 	    return rb_ensure(rb_yield, io, io_close, io);
@@ -7048,7 +7087,7 @@ rb_f_putc(VALUE recv, VALUE ch)
     if (recv == rb_stdout) {
 	return rb_io_putc(recv, ch);
     }
-    return rb_funcall2(rb_stdout, rb_intern("putc"), 1, &ch);
+    return rb_funcallv(rb_stdout, rb_intern("putc"), 1, &ch);
 }
 
 
@@ -7153,7 +7192,7 @@ rb_f_puts(int argc, VALUE *argv, VALUE recv)
     if (recv == rb_stdout) {
 	return rb_io_puts(argc, argv, recv);
     }
-    return rb_funcall2(rb_stdout, rb_intern("puts"), argc, argv);
+    return rb_funcallv(rb_stdout, rb_intern("puts"), argc, argv);
 }
 
 void
@@ -7677,7 +7716,7 @@ rb_file_initialize(int argc, VALUE *argv, VALUE io)
 	rb_raise(rb_eRuntimeError, "reinitializing File");
     }
     if (0 < argc && argc < 3) {
-	VALUE fd = rb_check_convert_type(argv[0], T_FIXNUM, "Fixnum", "to_int");
+	VALUE fd = rb_check_to_int(argv[0]);
 
 	if (!NIL_P(fd)) {
 	    argv[0] = fd;
@@ -8175,7 +8214,7 @@ rb_f_gets(int argc, VALUE *argv, VALUE recv)
     if (recv == argf) {
 	return argf_gets(argc, argv, argf);
     }
-    return rb_funcall2(argf, idGets, argc, argv);
+    return rb_funcallv(argf, idGets, argc, argv);
 }
 
 /*
@@ -8248,7 +8287,7 @@ rb_f_readline(int argc, VALUE *argv, VALUE recv)
     if (recv == argf) {
 	return argf_readline(argc, argv, argf);
     }
-    return rb_funcall2(argf, rb_intern("readline"), argc, argv);
+    return rb_funcallv(argf, rb_intern("readline"), argc, argv);
 }
 
 
@@ -8301,7 +8340,7 @@ rb_f_readlines(int argc, VALUE *argv, VALUE recv)
     if (recv == argf) {
 	return argf_readlines(argc, argv, argf);
     }
-    return rb_funcall2(argf, rb_intern("readlines"), argc, argv);
+    return rb_funcallv(argf, rb_intern("readlines"), argc, argv);
 }
 
 /*
@@ -9695,13 +9734,15 @@ open_key_args(int argc, VALUE *argv, VALUE opt, struct foreach_arg *arg)
 }
 
 static VALUE
-io_s_foreach(struct foreach_arg *arg)
+io_s_foreach(struct getline_arg *arg)
 {
     VALUE str;
 
-    while (!NIL_P(str = rb_io_gets_m(arg->argc, arg->argv, arg->io))) {
+    while (!NIL_P(str = rb_io_getline_1(arg->rs, arg->limit, arg->io))) {
+	rb_lastline_set(str);
 	rb_yield(str);
     }
+    rb_lastline_set(Qnil);
     return Qnil;
 }
 
@@ -9737,18 +9778,21 @@ rb_io_s_foreach(int argc, VALUE *argv, VALUE self)
     VALUE opt;
     int orig_argc = argc;
     struct foreach_arg arg;
+    struct getline_arg garg;
 
     argc = rb_scan_args(argc, argv, "13:", NULL, NULL, NULL, NULL, &opt);
     RETURN_ENUMERATOR(self, orig_argc, argv);
+    extract_getline_args(argc-1, argv+1, &garg.rs, &garg.limit);
     open_key_args(argc, argv, opt, &arg);
     if (NIL_P(arg.io)) return Qnil;
-    return rb_ensure(io_s_foreach, (VALUE)&arg, rb_io_close, arg.io);
+    check_getline_args(&garg.rs, &garg.limit, garg.io = arg.io);
+    return rb_ensure(io_s_foreach, (VALUE)&garg, rb_io_close, arg.io);
 }
 
 static VALUE
-io_s_readlines(struct foreach_arg *arg)
+io_s_readlines(struct getline_arg *arg)
 {
-    return rb_io_readlines(arg->argc, arg->argv, arg->io);
+    return io_readlines(arg->rs, arg->limit, arg->io);
 }
 
 /*
@@ -9774,11 +9818,14 @@ rb_io_s_readlines(int argc, VALUE *argv, VALUE io)
 {
     VALUE opt;
     struct foreach_arg arg;
+    struct getline_arg garg;
 
     argc = rb_scan_args(argc, argv, "13:", NULL, NULL, NULL, NULL, &opt);
+    extract_getline_args(argc-1, argv+1, &garg.rs, &garg.limit);
     open_key_args(argc, argv, opt, &arg);
     if (NIL_P(arg.io)) return Qnil;
-    return rb_ensure(io_s_readlines, (VALUE)&arg, rb_io_close, arg.io);
+    check_getline_args(&garg.rs, &garg.limit, garg.io = arg.io);
+    return rb_ensure(io_s_readlines, (VALUE)&garg, rb_io_close, arg.io);
 }
 
 static VALUE
@@ -9808,6 +9855,9 @@ seek_before_access(VALUE argp)
  *  Opens the file, optionally seeks to the given +offset+, then returns
  *  +length+ bytes (defaulting to the rest of the file).  <code>read</code>
  *  ensures the file is closed before returning.
+ *
+ *  If +name+ starts with a pipe character (<code>"|"</code>), a subprocess is
+ *  created in the same way as Kernel#open, and its output is returned.
  *
  *  === Options
  *
@@ -9971,8 +10021,8 @@ io_s_write(int argc, VALUE *argv, int binary)
 
 /*
  *  call-seq:
- *     IO.write(name, string, [offset] )   => fixnum
- *     IO.write(name, string, [offset], open_args )   => fixnum
+ *     IO.write(name, string, [offset] )   => integer
+ *     IO.write(name, string, [offset], open_args )   => integer
  *
  *  Opens the file, optionally seeks to the given <i>offset</i>, writes
  *  <i>string</i>, then returns the length written.
@@ -9994,7 +10044,7 @@ io_s_write(int argc, VALUE *argv, int binary)
  *    specifies mode argument for open().  it should start with "w" or "a" or "r+"
  *    otherwise it would cause error.
  *
- *   perm: fixnum
+ *   perm: integer
  *
  *    specifies perm argument for open().
  *
@@ -10016,8 +10066,8 @@ rb_io_s_write(int argc, VALUE *argv, VALUE io)
 
 /*
  *  call-seq:
- *     IO.binwrite(name, string, [offset] )   => fixnum
- *     IO.binwrite(name, string, [offset], open_args )   => fixnum
+ *     IO.binwrite(name, string, [offset] )   => integer
+ *     IO.binwrite(name, string, [offset], open_args )   => integer
  *
  *  Same as <code>IO.write</code> except opening the file in binary mode
  *  and ASCII-8BIT encoding ("wb:ASCII-8BIT").
@@ -10822,7 +10872,7 @@ rb_io_set_encoding(int argc, VALUE *argv, VALUE io)
     VALUE v1, v2, opt;
 
     if (!RB_TYPE_P(io, T_FILE)) {
-        return rb_funcall2(io, id_set_encoding, argc, argv);
+        return rb_funcallv(io, id_set_encoding, argc, argv);
     }
 
     argc = rb_scan_args(argc, argv, "11:", &v1, &v2, &opt);
@@ -11017,8 +11067,8 @@ argf_rewind(VALUE argf)
 
 /*
  *  call-seq:
- *     ARGF.fileno    -> fixnum
- *     ARGF.to_i      -> fixnum
+ *     ARGF.fileno    -> integer
+ *     ARGF.to_i      -> integer
  *
  *  Returns an integer representing the numeric file descriptor for
  *  the current file. Raises an +ArgumentError+ if there isn't a current file.

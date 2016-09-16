@@ -447,6 +447,11 @@ class TestFloat < Test::Unit::TestCase
     assert_raise(TypeError) {1.0.round(nil)}
     def (prec = Object.new).to_int; 2; end
     assert_equal(1.0, 0.998.round(prec))
+
+    assert_equal(+5.02, +5.015.round(2))
+    assert_equal(-5.02, -5.015.round(2))
+    assert_equal(+1.26, +1.255.round(2))
+    assert_equal(-1.26, -1.255.round(2))
   end
 
   def test_floor_with_precision
@@ -787,5 +792,22 @@ class TestFloat < Test::Unit::TestCase
     assert_operator(+0.0, :eql?, -0.0)
     h = {0.0 => bug10979}
     assert_equal(bug10979, h[-0.0])
+  end
+
+  def test_aliased_quo_recursion
+    assert_separately([], "#{<<-"begin;"}\n#{<<-"end;"}")
+    begin;
+      class Float
+        $VERBOSE = nil
+        alias / quo
+      end
+      assert_raise(NameError) do
+        begin
+          1.0/2.0
+        rescue SystemStackError => e
+          raise SystemStackError, e.message
+        end
+      end
+    end;
   end
 end

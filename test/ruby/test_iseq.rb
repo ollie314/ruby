@@ -19,6 +19,10 @@ class TestISeq < Test::Unit::TestCase
     body.find_all{|e| e.kind_of? Integer}
   end
 
+  def test_allocate
+    assert_raise(TypeError) {ISeq.allocate}
+  end
+
   def test_to_a_lines
     src = <<-EOS
     p __LINE__ # 1
@@ -234,5 +238,18 @@ class TestISeq < Test::Unit::TestCase
       end
     end
     assert_equal([m1, e1.message], [m2, e2.message], feature11951)
+    e1, e2 = e1.message.lines
+    assert_send([e1, :start_with?, __FILE__])
+    assert_send([e2, :start_with?, __FILE__])
+  end
+
+  def test_translate_by_object
+    assert_separately([], <<-"end;")
+      class Object
+        def translate
+        end
+      end
+      assert_equal(0, eval("0"))
+    end;
   end
 end

@@ -1,6 +1,9 @@
 # vcs
 require 'fileutils'
 
+# This library is used by several other tools/ scripts to detect the current
+# VCS in use (e.g. SVN, Git) or to interact with that VCS.
+
 ENV.delete('PWD')
 
 unless File.respond_to? :realpath
@@ -135,7 +138,7 @@ class VCS
   end
 
   def modified(path)
-    last, changed, modified, *rest = get_revisions(path)
+    _, _, modified, * = get_revisions(path)
     modified
   end
 

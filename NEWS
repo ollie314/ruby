@@ -30,6 +30,10 @@ with all sufficient information, see the ChangeLog file or Redmine
     This is different from Enumerable#sum in that Array#sum doesn't depend on
     the definition of each method.
 
+* Comparable
+
+  * Comparable#clamp.  [Feature #10594]
+
 * Dir
 
   * Dir.empty?.  [Feature #10121]
@@ -37,6 +41,11 @@ with all sufficient information, see the ChangeLog file or Redmine
 * Enumerable
 
   * Enumerable#sum  [Feature #12217]
+  * Enumerable#uniq  [Feature #11090]
+
+* Enumerator::Lazy
+
+  * Enumerator::Lazy#uniq  [Feature #11090]
 
 * File
 
@@ -47,6 +56,10 @@ with all sufficient information, see the ChangeLog file or Redmine
   * Float#ceil, Float#floor, and Float#truncate now take an optional
     digits, as well as Float#round.  [Feature #12245]
 
+* Hash
+
+  * Hash#transform_values and Hash#transform_values!  [Feature #12512]
+
 * Integer
 
   * Integer#ceil, Integer#floor, and Integer#truncate now take an optional
@@ -54,16 +67,39 @@ with all sufficient information, see the ChangeLog file or Redmine
 
   * Fixnum and Bignum are unified into Integer  [Feature #12005]
 
+  * Integer#digits for extracting columns of place-value notation [Feature #12447]
+
+* Kernel
+
+  * Kernel#clone now takes an optional keyword argument, freeze flag.
+    [Feature #12300]
+
+* MatchData
+
+  * MatchData#named_captures [Feature #11999]
+  * MatchData#values_at supports named captures [Feature #9179]
+
+* Module
+
+  * Module.used_modules [Feature #7418]
+
 * Regexp
 
   * Regexp#match? [Feature #8110]
     This returns bool and doesn't save backref.
 
+* Regexp/String: Updated Unicode version from 8.0.0 to 9.0.0 [Feature #12513]
+
+* RubyVM::Env
+
+  * RubyVM::Env was removed.
+
 * String
 
   * String#upcase, String#downcase, String#capitalize, String#swapcase and
     their bang variants work for all of Unicode, and are no longer limited
-    to ASCII. Variations are available with options. See the documentation
+    to ASCII. Supported encodings are UTF-8, UTF-16BE/LE, UTF-32BE/LE, and
+    ISO-8859-1~16. Variations are available with options. See the documentation
     of String#downcase for details. [Feature #10085]
 
   * String.new(capacity: size) [Feature #12024]
@@ -75,11 +111,6 @@ with all sufficient information, see the ChangeLog file or Redmine
   * Symbol#upcase, Symbol#downcase, Symbol#capitalize, and Symbol#swapcase now
     work for all of Unicode. See the documentation of String#downcase
     for details. [Feature #10085]
-
-* MatchData
-
-  * MatchData#named_captures [Feature #11999]
-  * MatchData#values_at supports named captures [Feature #9179]
 
 * Thread
 
@@ -97,6 +128,12 @@ with all sufficient information, see the ChangeLog file or Redmine
 	* Allow specifying logger parameters in constructor such
 	  as level, progname, datetime_format, formatter. [Feature #12224]
 	* Add shift_period_suffix option. [Feature #10772]
+
+* OpenSSL
+
+  * OpenSSL is extracted as a gem and the upstream has been migrated to
+    https://github.com/ruby/openssl. OpenSSL still remains as a default gem.
+    Refer to its History.md for the full release note. [Feature #9612]
 
 * optparse
 
@@ -119,10 +156,13 @@ with all sufficient information, see the ChangeLog file or Redmine
   For example, 0 is an instance of Integer: 0.class returns Integer.
   The constants Fixnum and Bignum is bound to Integer.
   So obj.kind_of?(Fixnum) works as obj.kind_of?(Integer).
-  At C-level, rb_cFixnum and rb_cBignum is same as rb_cInteger.
-  So, class based dispatch, such as klass == rb_cFixnum and
-  klass == rb_cBignum, should be changed to FIXNUM_P(obj) and
-  RB_TYPE_P(obj, T_BIGNUM).
+  At C-level, Fixnum object and Bignum object should be distinguished by
+  FIXNUM_P(obj) and RB_TYPE_P(obj, T_BIGNUM).
+  RUBY_INTEGER_UNIFICATION can be used to detect this feature.
+  ruby-2.4.0-preview1 (temporally) removes rb_cFixnum and rb_cBignum
+  to check the effect of incompatibility.
+  (rb_cFixnum and rb_cBignum may be defined as rb_cInteger later if
+  compilation failure of extension library is too big problem.)
 
 * String/Symbol#upcase/downcase/swapcase/capitalize(!) now work for all of
   Unicode, not only for ASCII. [Feature #10085]
@@ -134,19 +174,23 @@ with all sufficient information, see the ChangeLog file or Redmine
 
 === Stdlib compatibility issues (excluding feature bug fixes)
 
-* Time
-
-  * Time#to_time now preserves timezone.  [Bug #12271]
-
 * DateTime
 
   * DateTime#to_time now preserves timezone.  [Bug #12189]
+
+* Time
+
+  * Time#to_time now preserves timezone.  [Bug #12271]
 
 * thread
 
   * the extension library is removed.  Till 2.0 it was a pure ruby script
     "thread.rb", which has precedence over "thread.so", and has been provided
     in $LOADED_FEATURES since 2.1.
+
+* Tk
+  * Tk is removed from stdlib.  [Feature #8539]
+    https://github.com/ruby/tk is the new upstream.
 
 === C API updates
 
@@ -167,3 +211,5 @@ with all sufficient information, see the ChangeLog file or Redmine
   be <= 0x100, and Array#max and min must not be redefined.  It will work
   in most casual and real-life use case where it is written with intent
   to `Math.max(x, y)`.
+
+* Thread deadlock detection now shows their backtrace and dependency. [Feature #8214]

@@ -286,7 +286,7 @@ int_pair_to_real_inclusive(uint32_t a, uint32_t b)
     const uint128_t m = ((uint128_t)1 << dig) | 1;
     uint128_t x = ((uint128_t)a << 32) | b;
     r = (double)(uint64_t)((x * m) >> 64);
-#elif defined HAVE_UINT64_T
+#elif defined HAVE_UINT64_T && !(defined _MSC_VER && _MSC_VER <= 1200)
     uint64_t x = ((uint64_t)a << dig_u) +
 	(((uint64_t)b + (a >> dig_u)) >> dig_r64);
     r = (double)x;
@@ -957,7 +957,7 @@ rb_random_real(VALUE obj)
 {
     rb_random_t *rnd = try_get_rnd(obj);
     if (!rnd) {
-	VALUE v = rb_funcall2(obj, id_rand, 0, 0);
+	VALUE v = rb_funcallv(obj, id_rand, 0, 0);
 	double d = NUM2DBL(v);
 	if (d < 0.0) {
 	    rb_raise(rb_eRangeError, "random number too small %g", d);
@@ -992,9 +992,7 @@ random_ulong_limited(VALUE obj, rb_random_t *rnd, unsigned long limit)
 	const int n = w > 32 ? sizeof(unsigned long) : sizeof(uint32_t);
 	const unsigned long mask = ~(~0UL << w);
 	const unsigned long full =
-#if SIZEOF_LONG == 4
 	    (size_t)n >= sizeof(unsigned long) ? ~0UL :
-#endif
 	    ~(~0UL << n * CHAR_BIT);
 	unsigned long val, bits = 0, rest = 0;
 	do {
@@ -1020,7 +1018,7 @@ rb_random_ulong_limited(VALUE obj, unsigned long limit)
     rb_random_t *rnd = try_get_rnd(obj);
     if (!rnd) {
 	VALUE lim = ulong_to_num_plus_1(limit);
-	VALUE v = rb_to_int(rb_funcall2(obj, id_rand, 1, &lim));
+	VALUE v = rb_to_int(rb_funcallv(obj, id_rand, 1, &lim));
 	unsigned long r = NUM2ULONG(v);
 	if (rb_num_negative_p(v)) {
 	    rb_raise(rb_eRangeError, "random number too small %ld", r);
@@ -1123,7 +1121,7 @@ range_values(VALUE vmax, VALUE *begp, VALUE *endp, int *exclp)
     if (!rb_range_values(vmax, begp, &end, exclp)) return Qfalse;
     if (endp) *endp = end;
     if (!rb_respond_to(end, id_minus)) return Qfalse;
-    r = rb_funcall2(end, id_minus, 1, begp);
+    r = rb_funcallv(end, id_minus, 1, begp);
     if (NIL_P(r)) return Qfalse;
     return r;
 }
@@ -1272,7 +1270,7 @@ rand_range(VALUE obj, rb_random_t* rnd, VALUE range)
 	}
       }
       default:
-	return rb_funcall2(beg, id_plus, 1, &v);
+	return rb_funcallv(beg, id_plus, 1, &v);
     }
 
     return v;

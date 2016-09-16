@@ -1157,7 +1157,7 @@ static VALUE
 do_sleep(VALUE args)
 {
     struct sleep_call *p = (struct sleep_call *)args;
-    return rb_funcall2(p->mutex, id_sleep, 1, &p->timeout);
+    return rb_funcallv(p->mutex, id_sleep, 1, &p->timeout);
 }
 
 static VALUE
@@ -1225,6 +1225,12 @@ undumpable(VALUE obj)
 {
     rb_raise(rb_eTypeError, "can't dump %"PRIsVALUE, rb_obj_class(obj));
     UNREACHABLE;
+}
+
+static void
+alias_global_const(const char *name, VALUE klass)
+{
+    rb_define_const(rb_cObject, name, klass);
 }
 
 static void
@@ -1309,7 +1315,7 @@ Init_thread_sync(void)
     rb_define_method(rb_cConditionVariable, "broadcast", rb_condvar_broadcast, 0);
 
 #define ALIAS_GLOBAL_CONST(name) \
-    rb_define_const(rb_cObject, #name, rb_c##name)
+    alias_global_const(#name, rb_c##name)
 
     ALIAS_GLOBAL_CONST(Mutex);
     ALIAS_GLOBAL_CONST(Queue);

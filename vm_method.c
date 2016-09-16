@@ -610,7 +610,7 @@ rb_method_entry_make(VALUE klass, ID mid, VALUE defined_class, rb_method_visibil
 	    recv_class = rb_ivar_get((klass), attached);	\
 	    hook_id = singleton_##hook;			\
 	}						\
-	rb_funcall2(recv_class, hook_id, 1, &arg);	\
+	rb_funcallv(recv_class, hook_id, 1, &arg);	\
     } while (0)
 
 static void
@@ -733,16 +733,18 @@ method_entry_get_without_cache(VALUE klass, ID id,
 	    ent->mid = id;
 
 	    if (UNDEFINED_METHOD_ENTRY_P(me)) {
-		ent->me = 0;
-		me = 0;
+		me = ent->me = NULL;
 	    }
 	    else {
 		ent->me = me;
 	    }
 	}
 	else if (UNDEFINED_METHOD_ENTRY_P(me)) {
-	    me = 0;
+	    me = NULL;
 	}
+    }
+    else if (UNDEFINED_METHOD_ENTRY_P(me)) {
+	me = NULL;
     }
 
     if (defined_class_ptr)
@@ -1869,9 +1871,9 @@ call_method_entry(rb_thread_t *th, VALUE defined_class, VALUE obj, ID id,
 {
     const rb_callable_method_entry_t *cme =
 	prepare_callable_method_entry(defined_class, id, me);
-    const rb_block_t *passed_block = th->passed_block;
+    VALUE passed_block_handler = vm_passed_block_handler(th);
     VALUE result = vm_call0(th, obj, id, argc, argv, cme);
-    th->passed_block = passed_block;
+    vm_passed_block_handler_set(th, passed_block_handler);
     return result;
 }
 
@@ -1916,7 +1918,7 @@ vm_respond_to(rb_thread_t *th, VALUE klass, VALUE obj, ID id, int priv)
     const rb_method_entry_t *const me =
 	method_entry_get(klass, resid, &defined_class);
 
-    if (!me) return TRUE;
+    if (!me) return -1;
     if (METHOD_ENTRY_BASIC(me)) {
 	return -1;
     }

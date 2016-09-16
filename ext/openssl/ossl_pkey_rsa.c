@@ -26,7 +26,7 @@
 static inline int
 RSA_HAS_PRIVATE(RSA *rsa)
 {
-    BIGNUM *p, *q;
+    const BIGNUM *p, *q;
 
     RSA_get0_factors(rsa, &p, &q);
     return p && q; /* d? why? */
@@ -229,8 +229,8 @@ ossl_rsa_initialize(int argc, VALUE *argv, VALUE self)
     if(rb_scan_args(argc, argv, "02", &arg, &pass) == 0) {
 	rsa = RSA_new();
     }
-    else if (FIXNUM_P(arg)) {
-	rsa = rsa_generate(FIX2INT(arg), NIL_P(pass) ? RSA_F4 : NUM2ULONG(pass));
+    else if (RB_INTEGER_TYPE_P(arg)) {
+	rsa = rsa_generate(NUM2INT(arg), NIL_P(pass) ? RSA_F4 : NUM2ULONG(pass));
 	if (!rsa) ossl_raise(eRSAError, NULL);
     }
     else {
@@ -267,6 +267,26 @@ ossl_rsa_initialize(int argc, VALUE *argv, VALUE self)
 	RSA_free(rsa);
 	ossl_raise(eRSAError, NULL);
     }
+
+    return self;
+}
+
+static VALUE
+ossl_rsa_initialize_copy(VALUE self, VALUE other)
+{
+    EVP_PKEY *pkey;
+    RSA *rsa, *rsa_new;
+
+    GetPKey(self, pkey);
+    if (EVP_PKEY_base_id(pkey) != EVP_PKEY_NONE)
+	ossl_raise(eRSAError, "RSA already initialized");
+    GetRSA(other, rsa);
+
+    rsa_new = ASN1_dup((i2d_of_void *)i2d_RSAPrivateKey, (d2i_of_void *)d2i_RSAPrivateKey, (char *)rsa);
+    if (!rsa_new)
+	ossl_raise(eRSAError, "ASN1_dup");
+
+    EVP_PKEY_assign_RSA(pkey, rsa_new);
 
     return self;
 }
@@ -315,7 +335,7 @@ ossl_rsa_is_private(VALUE self)
  *
  * Outputs this keypair in PEM encoding.  If +cipher+ and +pass_phrase+ are
  * given they will be used to encrypt the key.  +cipher+ must be an
- * OpenSSL::Cipher::Cipher instance.
+ * OpenSSL::Cipher instance.
  */
 static VALUE
 ossl_rsa_export(int argc, VALUE *argv, VALUE self)
@@ -363,7 +383,7 @@ static VALUE
 ossl_rsa_to_der(VALUE self)
 {
     RSA *rsa;
-    int (*i2d_func)_((const RSA*, unsigned char**));
+    int (*i2d_func)(const RSA *, unsigned char **);
     unsigned char *p;
     long len;
     VALUE str;
@@ -372,7 +392,7 @@ ossl_rsa_to_der(VALUE self)
     if (RSA_HAS_PRIVATE(rsa))
 	i2d_func = i2d_RSAPrivateKey;
     else
-	i2d_func = (int (*)(const RSA*, unsigned char**))i2d_RSA_PUBKEY;
+	i2d_func = (int (*)(const RSA *, unsigned char **))i2d_RSA_PUBKEY;
     if((len = i2d_func(rsa, NULL)) <= 0)
 	ossl_raise(eRSAError, NULL);
     str = rb_str_new(0, len);
@@ -398,7 +418,7 @@ static VALUE
 ossl_rsa_public_encrypt(int argc, VALUE *argv, VALUE self)
 {
     RSA *rsa;
-    BIGNUM *rsa_n;
+    const BIGNUM *rsa_n;
     int buf_len, pad;
     VALUE str, buffer, padding;
 
@@ -430,7 +450,7 @@ static VALUE
 ossl_rsa_public_decrypt(int argc, VALUE *argv, VALUE self)
 {
     RSA *rsa;
-    BIGNUM *rsa_n;
+    const BIGNUM *rsa_n;
     int buf_len, pad;
     VALUE str, buffer, padding;
 
@@ -462,7 +482,7 @@ static VALUE
 ossl_rsa_private_encrypt(int argc, VALUE *argv, VALUE self)
 {
     RSA *rsa;
-    BIGNUM *rsa_n;
+    const BIGNUM *rsa_n;
     int buf_len, pad;
     VALUE str, buffer, padding;
 
@@ -496,7 +516,7 @@ static VALUE
 ossl_rsa_private_decrypt(int argc, VALUE *argv, VALUE self)
 {
     RSA *rsa;
-    BIGNUM *rsa_n;
+    const BIGNUM *rsa_n;
     int buf_len, pad;
     VALUE str, buffer, padding;
 
@@ -534,7 +554,7 @@ ossl_rsa_get_params(VALUE self)
 {
     RSA *rsa;
     VALUE hash;
-    BIGNUM *n, *e, *d, *p, *q, *dmp1, *dmq1, *iqmp;
+    const BIGNUM *n, *e, *d, *p, *q, *dmp1, *dmq1, *iqmp;
 
     GetRSA(self, rsa);
     RSA_get0_key(rsa, &n, &e, &d);
@@ -636,21 +656,45 @@ ossl_rsa_blinding_off(VALUE self)
 }
  */
 
-OSSL_PKEY_BN_DEF3(rsa, RSA, key, n, e, d);
-OSSL_PKEY_BN_DEF2(rsa, RSA, factors, p, q);
-OSSL_PKEY_BN_DEF3(rsa, RSA, crt_params, dmp1, dmq1, iqmp);
+/*
+ * Document-method: OpenSSL::PKey::RSA#set_key
+ * call-seq:
+ *   rsa.set_key(n, e, d) -> self
+ *
+ * Sets +n+, +e+, +d+ for the RSA instance.
+ */
+OSSL_PKEY_BN_DEF3(rsa, RSA, key, n, e, d)
+/*
+ * Document-method: OpenSSL::PKey::RSA#set_factors
+ * call-seq:
+ *   rsa.set_factors(p, q) -> self
+ *
+ * Sets +p+, +q+ for the RSA instance.
+ */
+OSSL_PKEY_BN_DEF2(rsa, RSA, factors, p, q)
+/*
+ * Document-method: OpenSSL::PKey::RSA#set_crt_params
+ * call-seq:
+ *   rsa.set_crt_params(dmp1, dmq1, iqmp) -> self
+ *
+ * Sets +dmp1+, +dmq1+, +iqmp+ for the RSA instance. They are calculated by
+ * <tt>d mod (p - 1)</tt>, <tt>d mod (q - 1)</tt> and <tt>q^(-1) mod p</tt>
+ * respectively.
+ */
+OSSL_PKEY_BN_DEF3(rsa, RSA, crt_params, dmp1, dmq1, iqmp)
 
 /*
  * INIT
  */
-#define DefRSAConst(x) rb_define_const(cRSA, #x,INT2FIX(RSA_##x))
+#define DefRSAConst(x) rb_define_const(cRSA, #x, INT2NUM(RSA_##x))
 
 void
 Init_ossl_rsa(void)
 {
 #if 0
-    mOSSL = rb_define_module("OpenSSL"); /* let rdoc know about mOSSL and mPKey */
     mPKey = rb_define_module_under(mOSSL, "PKey");
+    cPKey = rb_define_class_under(mPKey, "PKey", rb_cObject);
+    ePKeyError = rb_define_class_under(mPKey, "PKeyError", eOSSLError);
 #endif
 
     /* Document-class: OpenSSL::PKey::RSAError
@@ -675,6 +719,7 @@ Init_ossl_rsa(void)
 
     rb_define_singleton_method(cRSA, "generate", ossl_rsa_s_generate, -1);
     rb_define_method(cRSA, "initialize", ossl_rsa_initialize, -1);
+    rb_define_copy_func(cRSA, ossl_rsa_initialize_copy);
 
     rb_define_method(cRSA, "public?", ossl_rsa_is_public, 0);
     rb_define_method(cRSA, "private?", ossl_rsa_is_private, 0);

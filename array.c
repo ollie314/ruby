@@ -1560,10 +1560,10 @@ rb_ary_to_ary(VALUE obj)
 }
 
 static void
-rb_ary_splice(VALUE ary, long beg, long len, VALUE rpl)
+rb_ary_splice(VALUE ary, long beg, long len, const VALUE *rptr, long rlen)
 {
-    long rlen;
     long olen;
+    long rofs;
 
     if (len < 0) rb_raise(rb_eIndexError, "negative length (%ld)", len);
     olen = RARRAY_LEN(ary);
@@ -1578,14 +1578,11 @@ rb_ary_splice(VALUE ary, long beg, long len, VALUE rpl)
 	len = olen - beg;
     }
 
-    if (rpl == Qundef) {
-	rlen = 0;
+    {
+	const VALUE *optr = RARRAY_CONST_PTR(ary);
+	rofs = (rptr >= optr && rptr < optr + olen) ? rptr - optr : -1;
     }
-    else {
-	rpl = rb_ary_to_ary(rpl);
-	rlen = RARRAY_LEN(rpl);
-	olen = RARRAY_LEN(ary);	/* ary may be resized in rpl.to_ary too */
-    }
+
     if (beg >= olen) {
 	VALUE target_ary;
 	if (beg > ARY_MAX_SIZE - rlen) {
@@ -1595,7 +1592,8 @@ rb_ary_splice(VALUE ary, long beg, long len, VALUE rpl)
 	len = beg + rlen;
 	ary_mem_clear(ary, olen, beg - olen);
 	if (rlen > 0) {
-	    ary_memcpy0(ary, beg, rlen, RARRAY_CONST_PTR(rpl), target_ary);
+	    if (rofs != -1) rptr = RARRAY_CONST_PTR(ary) + rofs;
+	    ary_memcpy0(ary, beg, rlen, rptr, target_ary);
 	}
 	ARY_SET_LEN(ary, len);
     }
@@ -1618,10 +1616,10 @@ rb_ary_splice(VALUE ary, long beg, long len, VALUE rpl)
 	    ARY_SET_LEN(ary, alen);
 	}
 	if (rlen > 0) {
-	    MEMMOVE(RARRAY_PTR(ary) + beg, RARRAY_CONST_PTR(rpl), VALUE, rlen);
+	    if (rofs != -1) rptr = RARRAY_CONST_PTR(ary) + rofs;
+	    MEMMOVE(RARRAY_PTR(ary) + beg, rptr, VALUE, rlen);
 	}
     }
-    RB_GC_GUARD(rpl);
 }
 
 void
@@ -1724,13 +1722,13 @@ static VALUE
 rb_ary_aset(int argc, VALUE *argv, VALUE ary)
 {
     long offset, beg, len;
+    VALUE rpl;
 
     if (argc == 3) {
 	rb_ary_modify_check(ary);
 	beg = NUM2LONG(argv[0]);
 	len = NUM2LONG(argv[1]);
-	rb_ary_splice(ary, beg, len, argv[2]);
-	return argv[2];
+	goto range;
     }
     rb_check_arity(argc, 2, 2);
     rb_ary_modify_check(ary);
@@ -1740,8 +1738,11 @@ rb_ary_aset(int argc, VALUE *argv, VALUE ary)
     }
     if (rb_range_beg_len(argv[0], &beg, &len, RARRAY_LEN(ary), 1)) {
 	/* check if idx is Range */
-	rb_ary_splice(ary, beg, len, argv[1]);
-	return argv[1];
+      range:
+	rpl = rb_ary_to_ary(argv[argc-1]);
+	rb_ary_splice(ary, beg, len, RARRAY_CONST_PTR(rpl), RARRAY_LEN(rpl));
+	RB_GC_GUARD(rpl);
+	return argv[argc-1];
     }
 
     offset = NUM2LONG(argv[0]);
@@ -1781,7 +1782,7 @@ rb_ary_insert(int argc, VALUE *argv, VALUE ary)
     if (pos < 0) {
 	pos++;
     }
-    rb_ary_splice(ary, pos, 0, rb_ary_new4(argc - 1, argv + 1));
+    rb_ary_splice(ary, pos, 0, argv + 1, argc - 1);
     return ary;
 }
 
@@ -3116,7 +3117,7 @@ rb_ary_slice_bang(int argc, VALUE *argv, VALUE ary)
 	if (len == 0) return rb_ary_new2(0);
 	arg2 = rb_ary_new4(len, RARRAY_CONST_PTR(ary)+pos);
 	RBASIC_SET_CLASS(arg2, rb_obj_class(ary));
-	rb_ary_splice(ary, pos, len, Qundef);
+	rb_ary_splice(ary, pos, len, 0, 0);
 	return arg2;
     }
 
@@ -3622,31 +3623,58 @@ rb_ary_plus(VALUE x, VALUE y)
     return z;
 }
 
-/*
- *  call-seq:
- *     ary.concat(other_ary)   -> ary
- *
- *  Appends the elements of +other_ary+ to +self+.
- *
- *     [ "a", "b" ].concat( ["c", "d"] ) #=> [ "a", "b", "c", "d" ]
- *     a = [ 1, 2, 3 ]
- *     a.concat( [ 4, 5 ] )
- *     a                                 #=> [ 1, 2, 3, 4, 5 ]
- *
- *  See also Array#+.
- */
-
-VALUE
-rb_ary_concat(VALUE x, VALUE y)
+static VALUE
+ary_append(VALUE x, VALUE y)
 {
-    rb_ary_modify_check(x);
-    y = to_ary(y);
-    if (RARRAY_LEN(y) > 0) {
-	rb_ary_splice(x, RARRAY_LEN(x), 0, y);
+    long n = RARRAY_LEN(y);
+    if (n > 0) {
+	rb_ary_splice(x, RARRAY_LEN(x), 0, RARRAY_CONST_PTR(y), n);
     }
     return x;
 }
 
+/*
+ *  call-seq:
+ *     ary.concat(other_ary1, other_ary2,...)   -> ary
+ *
+ *  Appends the elements of +other_ary+s to +self+.
+ *
+ *     [ "a", "b" ].concat( ["c", "d"] ) #=> [ "a", "b", "c", "d" ]
+ *     [ "a" ].concat( ["b"], ["c", "d"] ) #=> [ "a", "b", "c", "d" ]
+ *     [ "a" ].concat #=> [ "a" ]
+ *
+ *     a = [ 1, 2, 3 ]
+ *     a.concat( [ 4, 5 ] )
+ *     a                                 #=> [ 1, 2, 3, 4, 5 ]
+ *
+ *     a = [ 1, 2 ]
+ *     a.concat(a, a)                    #=> [1, 2, 1, 2, 1, 2]
+ *
+ *  See also Array#+.
+ */
+
+static VALUE
+rb_ary_concat_multi(int argc, VALUE *argv, VALUE ary)
+{
+    rb_ary_modify_check(ary);
+
+    if (argc > 0) {
+	int i;
+	VALUE args = rb_ary_tmp_new(argc);
+	for (i = 0; i < argc; i++) {
+	    rb_ary_concat(args, argv[i]);
+	}
+	ary_append(ary, args);
+    }
+
+    return ary;
+}
+
+VALUE
+rb_ary_concat(VALUE x, VALUE y)
+{
+    return ary_append(x, to_ary(y));
+}
 
 /*
  *  call-seq:
@@ -3875,7 +3903,7 @@ rb_ary_eql(VALUE ary1, VALUE ary2)
 
 /*
  *  call-seq:
- *     ary.hash   -> fixnum
+ *     ary.hash   -> integer
  *
  *  Compute a hash-code for this array.
  *
@@ -4008,9 +4036,7 @@ ary_add_hash(VALUE hash, VALUE ary)
 
     for (i=0; i<RARRAY_LEN(ary); i++) {
 	VALUE elt = RARRAY_AREF(ary, i);
-	if (rb_hash_lookup2(hash, elt, Qundef) == Qundef) {
-	    rb_hash_aset(hash, elt, elt);
-	}
+	rb_hash_add_new_element(hash, elt, elt);
     }
     return hash;
 }
@@ -4038,9 +4064,7 @@ ary_add_hash_by(VALUE hash, VALUE ary)
 
     for (i = 0; i < RARRAY_LEN(ary); ++i) {
 	VALUE v = rb_ary_elt(ary, i), k = rb_yield(v);
-	if (rb_hash_lookup2(hash, k, Qundef) == Qundef) {
-	    rb_hash_aset(hash, k, v);
-	}
+	rb_hash_add_new_element(hash, k, v);
     }
     return hash;
 }
@@ -4559,7 +4583,7 @@ flatten(VALUE ary, int level, int *modified)
 
     st_free_table(memo);
 
-    RBASIC_SET_CLASS(result, rb_class_of(ary));
+    RBASIC_SET_CLASS(result, rb_obj_class(ary));
     return result;
 }
 
@@ -6076,7 +6100,7 @@ Init_Array(void)
     rb_define_method(rb_cArray, "fetch", rb_ary_fetch, -1);
     rb_define_method(rb_cArray, "first", rb_ary_first, -1);
     rb_define_method(rb_cArray, "last", rb_ary_last, -1);
-    rb_define_method(rb_cArray, "concat", rb_ary_concat, 1);
+    rb_define_method(rb_cArray, "concat", rb_ary_concat_multi, -1);
     rb_define_method(rb_cArray, "<<", rb_ary_push, 1);
     rb_define_method(rb_cArray, "push", rb_ary_push_m, -1);
     rb_define_method(rb_cArray, "pop", rb_ary_pop_m, -1);
