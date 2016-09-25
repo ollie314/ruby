@@ -1,3 +1,229 @@
+Sat Sep 24 22:26:20 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/extmk.rb (extract_makefile, extmake, configuration): store
+	  extra libraries to be installed.
+
+	* tool/rbinstall.rb (ext-arch): install extra libraries.
+
+	* ext/zlib/extconf.rb: install zlib if built.
+
+Sat Sep 24 14:24:55 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* spec/README: update URL.
+
+Sat Sep 24 11:28:22 2016  Koichi ITO  <koic.ito@gmail.com>
+
+	* fix typos, "a" before "Integer" to "an".  [Fix GH-1438]
+
+Sat Sep 24 10:19:41 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* test/misc/test_ruby_mode.rb (assert_indent): since write-region
+	  in Emacs 25.1 no longer displays the "Wrote file" message, shows
+	  the explicit message to check if successfully finished.
+	  [ruby-core:77355] [Bug #12785]
+
+	* test/misc/test_ruby_mode.rb (EXPR_SAVE): use a numeric prefix
+	  argument of 0, not to make the previous version into a backup
+	  file, instead of backup-inhibited.
+
+	* test/misc/test_ruby_mode.rb (run_emacs): always save the buffer
+	  if modified.
+
+Fri Sep 23 23:57:40 2016  Shugo Maeda  <shugo@ruby-lang.org>
+
+	* vm_method.c (make_method_entry_refined): fix wrong use of ||.
+
+Fri Sep 23 21:38:58 2016  Akinori MUSHA  <knu@iDaemons.org>
+
+	* tool/mdoc2man.rb (Mdoc2Man#parse_macro): Add support for the
+	  `Lk` macro.
+
+	* tool/mdoc2man.rb (Mdoc2Man#shift_arg): A new function to extract
+	  a possibly quoted argument.
+
+Fri Sep 23 20:36:05 2016  Shugo Maeda  <shugo@ruby-lang.org>
+
+	* eval.c (rb_mod_refine): refine modules as well.
+	  [ruby-core:76199] [Feature #12534]
+
+Fri Sep 23 20:19:09 2016  Akinori MUSHA  <knu@iDaemons.org>
+
+	* man/ruby.1: Update the paragraphs in "Rich Libraries" which
+	  included a dead link.
+
+Fri Sep 23 20:05:27 2016  Akinori MUSHA  <knu@iDaemons.org>
+
+	* man/ruby.1, man/erb.1, man/irb.1, man/ri.1: Use the `Lk` macro
+	  for hyperlinks, which has been available since mdocml 1.5.1
+	  (released more than seven years ago).
+
+Fri Sep 23 15:47:04 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/forwardable.rb (_delegator_method): allow private methods to
+	  be delegated, with warnings.  [ruby-core:77341] [Bug #12782]
+
+Fri Sep 23 12:15:29 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* compile.c (iseq_peephole_optimize): enable tail call
+	  optimization inside a conditional block.
+
+Thu Sep 22 13:00:04 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* gc.c (gc_start_internal): [DOC] methods without arguments
+	  like r56194. [Bug #12777]
+
+Wed Sep 21 17:43:53 2016  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* process.c (InitVM_process): Support CLOCK_MONOTONIC_RAW_APPROX,
+	  CLOCK_UPTIME_RAW, and CLOCK_UPTIME_RAW_APPROX which are introduced
+	  by macOS 10.12.
+
+Wed Sep 21 13:47:33 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* parse.y (brace_body, do_body): preserve cmdarg_stack so that
+	  `do` after cmdarg in a block should be `do_block` and bound to
+	  the outer method.  [ruby-core:72482] [Bug #11873]
+
+	* parse.y: `do` after cmdarg in parentheses should be `do_block`
+	  and bound to the outer method.  [ruby-core:72482] [Bug #11873]
+
+	* parse.y (brace_body, do_body): extract block bodies.
+
+Tue Sep 20 23:02:50 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* gc.c (gc_start_internal): [DOC] add ObjectSpace.garbage_collect
+	  and fix GC#garbage_collect.  [Bug #12777]
+
+Tue Sep 20 21:24:01 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* doc/extension.ja.rdoc: translate r56189 (rb_gc_adjust_memory_usage).
+
+Tue Sep 20 17:52:28 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* gems/bundled_gems: Update rake-11.3.0
+
+Tue Sep 20 16:52:23 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* gc.c (rb_gc_adjust_memory_usage): notify memory usage to the GC
+	  engine by extension libraries, to trigger GC.  [Feature #12690]
+
+Mon Sep 19 17:05:22 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* numeric.c (Init_Numeric), bignum.c (Init_Bignum): deprecate
+	  Fixnum and Bignum.  this may be reverted after previews.
+	  [Feature #12739]
+
+Mon Sep 19 10:36:53 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* enumerator.c (lazy_init_yielder): directly call stored functions.
+	  [Feature #6183]
+
+	* enumerator.c (lazy_add_method): create lazy enumerator which
+	  uses lazy_init_yielder().
+
+Sun Sep 18 22:48:54 2016  Kouhei Sutou  <kou@cozmixng.org>
+
+	* lib/rss/rss.rb (RSS::BaseModel): Remove needless codes.
+	  [Bug #12773][ruby-dev:49813]
+	  Reported by Kazuhiro NISHIYAMA. Thanks!!!
+
+Sun Sep 18 19:23:47 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* lib/sync.rb: Fix NameError when error.
+
+Sat Sep 17 22:46:02 2016  Koichi ITO  <koic.ito@gmail.com>
+
+	* vm_insnhelper.c (vm_throw_start): Remove too much ";"
+	  [fix GH-1432]
+
+Sat Sep 17 19:19:06 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* test/openssl/test_ssl.rb (test_ctx_options): Fix test failure on
+	  Ubuntu 16.04. The fix in r56147 was incomplete. This is a cherry-pick
+	  of the commit b039f3e268c2 at ruby/openssl.
+
+Sat Sep 17 10:49:35 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* doc/extension.ja.rdoc: translate r56130 (rb_check_arity).
+
+Sat Sep 17 02:40:52 2016  Aaron Patterson <tenderlove@ruby-lang.org>
+
+	* ext/objspace/objspace_dump.c: Fix stream processing support for heap
+	  dumps. Full heap dumps should use JSON lines (http://jsonlines.org)
+	  so that we can process very large heaps without loading the entire
+	  heap dump in to memory at once.
+
+Fri Sep 16 22:10:31 2016  Naohisa Goto  <ngotogenome@gmail.com>
+
+	* ext/openssl/ossl_ssl.c (ssl_npn_select_cb_common): Fix compile error
+	  with old version of fcc (Fujitsu C Compiler) on Solaris 10.
+	  [Bug #12769] [ruby-dev:49809]
+
+Fri Sep 16 21:28:25 2016  Naohisa Goto  <ngotogenome@gmail.com>
+
+	* internal.h (MAYBE_UNUSED): The fallback definition is needed.
+	  Fix compile error with some non-GCC compilers such as
+	  Oracle Solaris Studio 12.3 on Solaris 10.
+	  [Bug #12767] [ruby-dev:49807]
+
+	* internal.h (WARN_UNUSED_RESULT): ditto.
+
+Fri Sep 16 21:19:51 2016  Naohisa Goto  <ngotogenome@gmail.com>
+
+	* hash.c (each_pair_i_fast): Fix compile error with old version of
+	  fcc on Solaris 10. [Bug #12768] [ruby-dev:49808]
+
+Fri Sep 16 19:46:05 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* win32/Makefile.sub (config.h): fixed compile error with VC introduced
+	  by previous commit.
+
+Fri Sep 16 14:54:34 2016  URABE Shyouhei  <shyouhei@ruby-lang.org>
+
+	* internal.h (WARN_UNUSED_RESULT): moved to configure.in, to
+	  actually check its availability rather to check GCC's version.
+
+	* configure.in (WARN_UNUSED_RESULT): moved to here.
+
+	* configure.in (RUBY_FUNC_ATTRIBUTE): change function declaration
+	  to return int rather than void, because it makes no sense for a
+	  warn_unused_result attributed function to return void.
+
+	  Funny thing however is that it also makes no sense for noreturn
+	  attributed function to return int.  So there is a fundamental
+	  conflict between them.  While I tested this, I confirmed both
+	  GCC 6 and Clang 3.8 prefers int over void to correctly detect
+	  necessary attributes under this setup.  Maybe subject to change
+	  in future.
+
+	* internal.h (UNINITIALIZED_VAR): renamed to MAYBE_UNUSED, then
+	  moved to configure.in for the same reason we move
+	  WARN_UNUSED_RESULT.
+
+	* configure.in (MAYBE_UNUSED): moved to here.
+
+	* internal.h (__has_attribute): deleted, because it has no use now.
+
+	* string.c (rb_str_enumerate_lines): refactor macro rename.
+
+	* string.c (rb_str_enumerate_bytes): ditto.
+
+	* string.c (rb_str_enumerate_chars): ditto.
+
+	* string.c (rb_str_enumerate_codepoints): ditto.
+
+	* thread.c (do_select): ditto.
+
+	* vm_backtrace.c (rb_debug_inspector_open): ditto.
+
+	* vsnprintf.c (BSD_vfprintf): ditto.
+
+Fri Sep 16 14:35:55 2016  URABE Shyouhei  <shyouhei@ruby-lang.org>
+
+	* ChangeLog (add-log-time-format): Not exactly sure when but
+	  recently (25.x maybe), emacs changed its API to take optional
+	  two arguments.  We have to follow that.
+
 Fri Sep 16 06:43:25 2016  Aaron Patterson <tenderlove@ruby-lang.org>
 
 	* lib/uri/generic.rb (def check_password): don't include bad password
@@ -8166,8 +8392,8 @@ For the changes before 1.8.0, see doc/ChangeLog-1.8.0
 
 Local variables:
 coding: us-ascii
-add-log-time-format: (lambda ()
-  (let* ((time (current-time))
+add-log-time-format: (lambda (&optional x y)
+  (let* ((time (or x (current-time)))
 	 (system-time-locale "C")
 	 (diff (+ (cadr time) 32400))
 	 (lo (% diff 65536))

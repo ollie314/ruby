@@ -176,7 +176,7 @@ module MakeMakefile
   ]
 
   def install_dirs(target_prefix = nil)
-    if $extout
+    if $extout and $extmk
       dirs = [
         ['BINDIR',        '$(extout)/bin'],
         ['RUBYCOMMONDIR', '$(extout)/common'],
@@ -1372,7 +1372,7 @@ SRC
   # _convertible_ means actually the same type, or typedef'd from the same
   # type.
   #
-  # If the +type+ is a integer type and the _convertible_ type is found,
+  # If the +type+ is an integer type and the _convertible_ type is found,
   # the following macros are passed as preprocessor constants to the compiler
   # using the +type+ name, in uppercase.
   #
@@ -2288,7 +2288,7 @@ DLLIB = #{dllib}
 EXTSTATIC = #{$static || ""}
 STATIC_LIB = #{staticlib unless $static.nil?}
 #{!$extout && defined?($installed_list) ? "INSTALLED_LIST = #{$installed_list}\n" : ""}
-TIMESTAMP_DIR = #{$extout ? '$(extout)/.timestamp' : '.'}
+TIMESTAMP_DIR = #{$extout && $extmk ? '$(extout)/.timestamp' : '.'}
 " #"
     # TODO: fixme
     install_dirs.each {|d| conf << ("%-14s= %s\n" % d) if /^[[:upper:]]/ =~ d[0]}
