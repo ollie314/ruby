@@ -1,3 +1,124 @@
+Wed Sep 28 10:43:27 2016  URABE Shyouhei  <shyouhei@ruby-lang.org>
+
+	* .travis.yml: delete comments. They were outdated.
+
+Wed Sep 28 09:57:48 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/rubygems.rb, lib/rubygems/*, test/rubygems/*: Update
+	  rubygems to 2.6.7.
+	  Release note of 2.6.7: https://github.com/rubygems/rubygems/commit/60f35bd1d2359fc30301d2d4cd72bc6833e8d12a
+
+Wed Sep 28 00:21:00 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* error.c (rb_warning_s_warn): the argument must be an
+	  ASCII-compatible string.  [ruby-core:77430] [Bug #12793]
+
+Tue Sep 27 23:22:31 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* parse.y (symbol, dsym, parser_set_number_literal): set state to
+	  ENDARG, so that `do` after a literal should be `do_block` and
+	  bound to the outer method.  [ruby-core:72482] [Bug #11873]
+
+	* parse.y (parse_ident): revert r56198.
+
+	* parse.y (warn_balanced): the state of symbol and numeric
+	  literals is now EXPR_ENDARG, do not exclude it.
+
+Tue Sep 27 22:59:42 2016  URABE Shyouhei  <shyouhei@ruby-lang.org>
+
+	* NEWS: news about Warning.warn.
+
+Tue Sep 27 18:10:18 2016  Jeremy Evans <code@jeremyevans.net>
+
+	* error.c: This makes all warnings raised call Warning.warn, which
+	  by default does the same thing it does currently
+	  (rb_write_error_str).  You can override Warning.warn to change
+	  the behavior. [ruby-core:75016] [Feature #12299]
+
+Tue Sep 27 17:35:28 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* iseq.c (iseqw_s_compile_file): deal with syntax error as well as
+	  compile, and should not abort when rescued.
+
+Tue Sep 27 12:07:17 2016  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* lib/cgi/cookie.rb (parse): don't allow , as a separator. [Bug #12791]
+
+	* lib/webrick/cookie.rb (parse): ditto.
+
+Mon Sep 26 21:37:21 2016  Akinori MUSHA  <knu@iDaemons.org>
+
+	* man/erb.1, man/irb.1, man/ri.1, man/ruby.1: Remove Ns before
+	  punctuation.
+
+Mon Sep 26 16:23:49 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* ext/stringio/stringio.c (strio_seek): Avoid signed integer overflow.
+	  It's not harmful in practice here, but is still undefined behavior.
+
+	* ext/stringio/stringio.c (strio_extend): Check that the new length does
+	  not exceed LONG_MAX. This fixes the invalid write on the overflow.
+
+	* test/stringio/test_stringio.rb (test_write_integer_overflow): Add a
+	  test case for the above fix in strio_extend().
+
+Mon Sep 26 15:43:34 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* eval_intern.h (TH_PUSH_TAG): Initialize struct rb_vm_tag::tag with
+	  Qundef rather than 0 which is equal to Qfalse. Since Kernel#throw(obj)
+	  searches a tag with rb_vm_tag::tag == obj, throw(false) can
+	  accidentally find an unrelated tag which is not created by
+	  Kernel#catch.  [ruby-core:77229] [Bug #12743]
+
+	* test/ruby/test_exception.rb (test_throw_false): Add a test case for
+	  this.
+
+Mon Sep 26 14:36:12 2016  Naotoshi Seo  <sonots@gmail.com>
+
+	* lib/tempfile.rb: provide default basename parameter for
+	  Tempfile.create. [Feature #11965] Patch by Yuki Kurihara
+	* test/test_tempfile.rb: ditto.
+
+Mon Sep 26 14:10:54 2016  Ary Borenszweig  <ary@esperanto.org.ar>
+
+	* string.c (lstrip_offset): add a fast path in the case of single
+	  byte optimizable strings, as well as rstrip_offset.
+	  [ruby-core:77392] [Feature #12788]
+
+Mon Sep 26 12:00:12 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* gems/bundled_gems: update to minitest-5.9.1.
+
+Mon Sep 26 11:50:03 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* tool/rbinstall.rb (gem): Don't install gemspec if no files will be
+	  installed for the gem. This happens when the extension library is not
+	  compiled.
+
+Mon Sep 26 11:06:47 2016  Kazuki Yamaguchi  <k@rhe.jp>
+
+	* string.c (enc_strlen, rb_enc_strlen_cr): Avoid signed integer
+	  overflow. The result type of a pointer subtraction may have the same
+	  size as long. This fixes String#size returning an negative value on
+	  i686-linux environment:
+
+	    str = "\x00" * ((1<<31)-2))
+	    str.slice!(-3, 3)
+	    str.force_encoding("UTF-32BE")
+	    str << 1234
+	    p str.size
+
+Sun Sep 25 22:48:06 2016  namusyaka  <namusyaka@gmail.com>
+
+	* lib/erb.rb (ERB::Compiler::TrimScanner#stag): The :stag accessor
+	  has already been available because it is defined in parent
+	  Scanner class.  [Fix GH-1445]
+
+Sun Sep 25 19:21:26 2016  Kazuki Tsujimoto  <kazuki@callcc.net>
+
+	* node.c (dump_array): remove duplicate header of NODE_ARRAY/
+	  NODE_VALUES.
+
 Sat Sep 24 22:26:20 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
 	* ext/extmk.rb (extract_makefile, extmake, configuration): store

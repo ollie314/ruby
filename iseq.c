@@ -781,9 +781,18 @@ static VALUE
 iseqw_s_compile(int argc, VALUE *argv, VALUE self)
 {
     VALUE src, file = Qnil, path = Qnil, line = INT2FIX(1), opt = Qnil;
+    int i;
+
     rb_secure(1);
 
-    rb_scan_args(argc, argv, "14", &src, &file, &path, &line, &opt);
+    i = rb_scan_args(argc, argv, "1*:", &src, NULL, &opt);
+    if (i > 4+NIL_P(opt)) rb_error_arity(argc, 1, 5);
+    switch (i) {
+      case 5: opt = argv[--i];
+      case 4: line = argv[--i];
+      case 3: path = argv[--i];
+      case 2: file = argv[--i];
+    }
     if (NIL_P(file)) file = rb_fstring_cstr("<compiled>");
     if (NIL_P(line)) line = INT2FIX(1);
 
@@ -814,24 +823,29 @@ static VALUE
 iseqw_s_compile_file(int argc, VALUE *argv, VALUE self)
 {
     VALUE file, line = INT2FIX(1), opt = Qnil;
-    VALUE parser;
-    VALUE f;
+    VALUE parser, f, exc = Qnil;
     NODE *node;
-    const char *fname;
     rb_compile_option_t option;
+    int i;
 
     rb_secure(1);
-    rb_scan_args(argc, argv, "11", &file, &opt);
+    i = rb_scan_args(argc, argv, "1*:", &file, NULL, &opt);
+    if (i > 1+NIL_P(opt)) rb_error_arity(argc, 1, 2);
+    switch (i) {
+      case 2: opt = argv[--i];
+    }
     FilePathValue(file);
     file = rb_fstring(file); /* rb_io_t->pathv gets frozen anyways */
-    fname = StringValueCStr(file);
 
     f = rb_file_open_str(file, "r");
 
     parser = rb_parser_new();
-    node = rb_parser_compile_file(parser, fname, f, NUM2INT(line));
+    rb_parser_set_context(parser, NULL, FALSE);
+    node = rb_parser_compile_file_path(parser, file, f, NUM2INT(line));
+    if (!node) exc = GET_THREAD()->errinfo;
 
     rb_io_close(f);
+    if (!node) rb_exc_raise(exc);
 
     make_compile_option(&option, opt);
 
