@@ -1,3 +1,51 @@
+Sat Oct  1 02:02:02 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* win32/win32.c (poll_child_status): rb_w32_wait_events_blocking() sets
+	  errno internally, then should not set it here.
+
+Fri Sep 30 19:06:21 2016  Anton Davydov  <mail@davydovanton.com>
+
+	* lib/uri/http.rb: Documentation and code style imrovements.
+	* test/uri/test_http.rb: Added test for coverage.
+	  [fix GH-1427][ruby-core:77255][Misc #12756]
+
+Fri Sep 30 18:43:20 2016  Jason Yeo  <jason@jasonyeo.me>
+
+	* doc/syntax/control_expressions.rdoc: Add missing 'as'
+	  [ci skip][fix GH-1448] Patch by @jsyeo
+
+Thu Sep 29 23:38:04 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* lib/yaml/store.rb (YAML::Store#dump): use table argument instead
+	  of @table directly.
+
+Thu Sep 29 22:22:22 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* lib/yaml/store.rb (YAML::Store#initialize): Fix arguments.
+	  [ruby-dev:49821] [Bug #12800]
+
+	* test/yaml/test_store.rb: Add tests from test/test_pstore.rb.
+
+	* test/yaml/test_store.rb (YAMLStoreTest#test_with_options): Add options test.
+
+	* lib/yaml/store.rb (YAML::Store#dump): Revert to to_yaml.
+
+	* lib/yaml/store.rb (YAML::Store#empty_marshal_data): Use to_yaml with options.
+
+	* lib/yaml/store.rb (YAML::Store#empty_marshal_checksum): Use CHECKSUM_ALGO.
+
+Thu Sep 29 19:34:23 2016  Pete Higgins  <pete@peterhiggins.org>
+
+	* thread_sync.c (rb_queue_pop, rb_szqueue_push, rb_szqueue_pop):
+	  Document exception types, ThreadError, raised by Queue and
+	  SizedQueue.  [Fix GH-1451]
+
+Thu Sep 29 19:21:02 2016  Pete Higgins  <pete@peterhiggins.org>
+
+	* thread_sync.c (Init_thread_sync): Remove confusing doc comments,
+	  which are picked up by rdoc unexpectedly, from Queue and
+	  SizedQueue.  [Fix GH-1450]
+
 Wed Sep 28 23:14:19 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
 	* lib/pstore.rb (PStore::CHECKSUM_ALGO): find available hashing
