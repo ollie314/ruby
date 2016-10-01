@@ -1,3 +1,31 @@
+Sun Oct  2 02:04:12 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* string.c (rb_str_hash_m): st_index_t is not guaranteed as the same
+	  size with int, and of course also not guaranteed the value can be
+	  Fixnum.
+
+Sun Oct  2 02:03:06 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* numeric.c (rb_fix2str): detect unnormalized Fixnum value.
+
+Sat Oct  1 23:08:47 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/date/date_parse.c (date_zone_to_diff): it's nonsence and really
+	  harm that to use unary minus operator with unsigned value.
+	  get rid of test failures introduced at r56312.
+
+Sat Oct  1 22:17:49 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* compile.c (iseq_compile_each): move numeric literal range
+	  optimization from fixup_nodes() in parse.y.
+
+Sat Oct  1 19:19:34 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* compile.c (compile_flip_flop): simplify generated code.
+
+	* compile.c (compile_branch_condition): flip-flop can appear only
+	  in coditional expressions.
+
 Sat Oct  1 02:02:02 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
 
 	* win32/win32.c (poll_child_status): rb_w32_wait_events_blocking() sets
