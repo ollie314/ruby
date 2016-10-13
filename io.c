@@ -4292,14 +4292,10 @@ fptr_finalize(rb_io_t *fptr, int noraise)
     }
 
     if (!NIL_P(err) && !noraise) {
-        switch (TYPE(err)) {
-          case T_FIXNUM:
-          case T_BIGNUM:
+	if (RB_INTEGER_TYPE_P(err))
 	    rb_syserr_fail_path(NUM2INT(err), fptr->pathv);
-
-          default:
-            rb_exc_raise(err);
-        }
+	else
+	    rb_exc_raise(err);
     }
     free_io_buffer(&fptr->rbuf);
     free_io_buffer(&fptr->wbuf);
@@ -5522,11 +5518,13 @@ rb_fdopen(int fd, const char *modestr)
     return file;
 }
 
-static void
+static int
 io_check_tty(rb_io_t *fptr)
 {
-    if (isatty(fptr->fd))
+    int t = isatty(fptr->fd);
+    if (t)
         fptr->mode |= FMODE_TTY|FMODE_DUPLEX;
+    return t;
 }
 
 static VALUE rb_io_internal_encoding(VALUE);
@@ -7276,6 +7274,7 @@ rb_f_p(int argc, VALUE *argv, VALUE self)
  *
  *     def display(port=$>)
  *       port.write self
+ *       nil
  *     end
  *
  *  For example:
@@ -7373,14 +7372,13 @@ prep_io(int fd, int fmode, VALUE klass, const char *path)
 
     MakeOpenFile(io, fp);
     fp->fd = fd;
-#ifdef __CYGWIN__
-    if (!isatty(fd)) {
-        fmode |= FMODE_BINMODE;
-	setmode(fd, O_BINARY);
-    }
-#endif
     fp->mode = fmode;
-    io_check_tty(fp);
+    if (!io_check_tty(fp)) {
+#ifdef __CYGWIN__
+	fp->mode |= FMODE_BINMODE;
+	setmode(fd, O_BINARY);
+#endif
+    }
     if (path) fp->pathv = rb_obj_freeze(rb_str_new_cstr(path));
     rb_update_max_fd(fd);
 
@@ -10659,7 +10657,7 @@ copy_stream_body(VALUE arg)
     else {
 	VALUE tmp_io = rb_io_check_io(dst_io);
 	if (!NIL_P(tmp_io)) {
-	    dst_io = tmp_io;
+	    dst_io = GetWriteIO(tmp_io);
 	}
 	else if (!RB_TYPE_P(dst_io, T_FILE)) {
 	    VALUE args[3];

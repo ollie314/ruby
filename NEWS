@@ -42,6 +42,8 @@ with all sufficient information, see the ChangeLog file or Redmine
 
   * Enumerable#sum  [Feature #12217]
   * Enumerable#uniq  [Feature #11090]
+  * Enumerable#chunk called without a block now return an Enumerator
+    [Feature #2172]
 
 * Enumerator::Lazy
 
@@ -59,6 +61,7 @@ with all sufficient information, see the ChangeLog file or Redmine
 * Hash
 
   * Hash#transform_values and Hash#transform_values!  [Feature #12512]
+  * Hash#compact and Hash#compact!  [Feature #11818]
 
 * Integer
 
@@ -146,6 +149,10 @@ with all sufficient information, see the ChangeLog file or Redmine
     https://github.com/ruby/openssl. OpenSSL still remains as a default gem.
     Refer to its History.md for the full release note. [Feature #9612]
 
+* Readline
+  * Readline.quoting_detection_proc and Readline.quoting_detection_proc=
+    [Feature #12659]
+
 * optparse
 
   * Add an into option. [Feature #11191]
@@ -175,10 +182,8 @@ with all sufficient information, see the ChangeLog file or Redmine
   FIXNUM_P(obj) and RB_TYPE_P(obj, T_BIGNUM).
   RUBY_INTEGER_UNIFICATION can be used to detect this feature at C-level.
   0.class == Integer can be used to detect this feature at Ruby-level.
-  ruby-2.4.0-preview1 (temporally) removes rb_cFixnum and rb_cBignum
-  to check the effect of incompatibility.
-  (rb_cFixnum and rb_cBignum may be defined as rb_cInteger later if
-  compilation failure of extension library is too big problem.)
+  The C-level constants, rb_cFixnum and rb_cBignum, is removed.
+  They can cause compilation failure.
 
 * String/Symbol#upcase/downcase/swapcase/capitalize(!) now work for all of
   Unicode, not only for ASCII. [Feature #10085]

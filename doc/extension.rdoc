@@ -592,7 +592,7 @@ function below.
 
   void rb_define_readonly_variable(const char *name, VALUE *var)
 
-You can defined hooked variables.  The accessor functions (getter and
+You can define hooked variables.  The accessor functions (getter and
 setter) are called on access to the hooked variables.
 
   void rb_define_hooked_variable(const char *name, VALUE *var,
@@ -1854,8 +1854,7 @@ keyword in C.  RB_GC_GUARD has the following advantages:
 
 3. "volatile" implementations may be buggy/inconsistent in some
    compilers and architectures. RB_GC_GUARD is customizable for broken
-   systems/compilers without those without negatively affecting other
-   systems.
+   systems/compilers without negatively affecting other systems.
 
 :enddoc: Local variables:
 :enddoc: fill-column: 70

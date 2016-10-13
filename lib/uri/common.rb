@@ -487,7 +487,24 @@ module URI
   end
 
   private
-  # curl http://encoding.spec.whatwg.org/encodings.json|rb -rpp -rjson -e'H={};h={"shift_jis"=>"Windows-31J","euc-jp"=>"cp51932","iso-2022-jp"=>"cp50221","x-mac-cyrillic"=>"macCyrillic"};JSON($<.read).map{|x|x["encodings"]}.flatten.each{|x|Encoding.find(n=h.fetch(n=x["name"],n))rescue next;x["labels"].each{|y|H[y]=n}};pp H'
+=begin command for WEB_ENCODINGS_
+  curl https://encoding.spec.whatwg.org/encodings.json|
+  ruby -rjson -e 'H={}
+  h={
+    "shift_jis"=>"Windows-31J",
+    "euc-jp"=>"cp51932",
+    "iso-2022-jp"=>"cp50221",
+    "x-mac-cyrillic"=>"macCyrillic",
+  }
+  JSON($<.read).map{|x|x["encodings"]}.flatten.each{|x|
+    Encoding.find(n=h.fetch(n=x["name"].downcase,n))rescue next
+    x["labels"].each{|y|H[y]=n}
+  }
+  puts "{"
+  H.each{|k,v|puts %[  #{k.dump}=>#{v.dump},]}
+  puts "}"
+'
+=end
   WEB_ENCODINGS_ = {
     "unicode-1-1-utf-8"=>"utf-8",
     "utf-8"=>"utf-8",
@@ -593,6 +610,7 @@ module URI
     "koi8"=>"koi8-r",
     "koi8-r"=>"koi8-r",
     "koi8_r"=>"koi8-r",
+    "koi8-ru"=>"koi8-u",
     "koi8-u"=>"koi8-u",
     "dos-874"=>"windows-874",
     "iso-8859-11"=>"windows-874",
@@ -673,6 +691,7 @@ module URI
     "csiso2022jp"=>"cp50221",
     "iso-2022-jp"=>"cp50221",
     "csshiftjis"=>"Windows-31J",
+    "ms932"=>"Windows-31J",
     "ms_kanji"=>"Windows-31J",
     "shift-jis"=>"Windows-31J",
     "shift_jis"=>"Windows-31J",
@@ -691,7 +710,7 @@ module URI
     "windows-949"=>"euc-kr",
     "utf-16be"=>"utf-16be",
     "utf-16"=>"utf-16le",
-    "utf-16le"=>"utf-16le"
+    "utf-16le"=>"utf-16le",
   } # :nodoc:
 
   # :nodoc:

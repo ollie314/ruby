@@ -1,3 +1,267 @@
+Thu Oct 13 19:41:32 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* io.c (copy_stream_body): use IO to write to copy to duplex IO.
+	  http://twitter.com/knu/status/786505317974585344
+
+Thu Oct 13 17:05:57 2016  Dwain Faithfull  <dwfaithfull@gmail.com>
+
+	* hash.c (rb_hash_compact, rb_hash_compact_bang): Removes nil
+	  values from the original hash, to port Active Support behavior.
+	  [Feature #11818]
+
+Thu Oct 13 11:35:33 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* array.c (rb_ary_sort_bang, rb_ary_sort, rb_ary_sort_by_bang):
+	  [DOC] describe that sort may not be stable.
+
+	* enum.c (enum_sort, enum_sort_by): ditto.
+
+Thu Oct 13 11:31:40 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* test/rexml/xpath/test_text.rb (test_ancestors): Array#sort may
+	  not be stable.  [ruby-core:76088] [Bug #12509]
+
+	* test/rss/test_maker_{0.9,1.0,2.0}.rb (test_items): ditto.
+
+Thu Oct 13 10:37:31 2016  Eric Wong  <e@80x24.org>
+
+	* doc/extension.rdoc: wording fix
+
+Thu Oct 13 00:39:08 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* test/ruby/test_array.rb (test_sort_bang_with_freeze): make a
+	  clone to copy a <=> singleton method, instead of dup.  which
+	  element will be called is not predictable.
+	  [ruby-core:76088] [Bug #12509]
+
+Thu Oct 13 00:21:27 2016  Simon Soriano  <simon0191@gmail.com>
+
+	* doc/extension.rdoc: Replace "You can defined hooked variables"
+	  with "You can define hooked variables". [Fix GH-1460]
+
+Wed Oct 12 21:05:50 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ruby.c (open_load_file): revert r56385.  it introduced incompatibility
+	  about `DATA.binmode?`.
+
+Wed Oct 12 15:24:53 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* tool/downloader.rb: Removed verification of gem certification.
+	  Because signed gem is not working on rubygems ecosystem.
+	* tool/gem-unpack.rb: ditto.
+
+Tue Oct 11 22:08:24 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* io.c (prep_io): fix typo of struct member name.
+	  [ruby-core:77550] [Bug #12829]
+
+Tue Oct 11 16:45:24 2016  Tanaka Akira  <akr@fsij.org>
+
+	* lib/uri/generic.rb (URI.find_proxy): Add an optional argument, env.
+
+Tue Oct 11 16:38:32 2016  Tanaka Akira  <akr@fsij.org>
+
+	* lib/pp.rb (String#pretty_print): Defined to print a string as
+	  multiple lines.
+	  [ruby-core:76800] [Feature#12664] proposed by Petr Chalupa.
+
+Mon Oct 10 15:22:27 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ruby.c (open_load_file): bind the open fd to an IO instance
+	  before waiting FIFO, not to leak the fd if interrupted.
+
+Mon Oct 10 12:40:54 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ruby.c (open_load_file): compare with EXEEXT instead of hard
+	  coded name, and do not match with mere EXEEXT.
+
+	* ruby.c (open_load_file): open in binary mode if available, as
+	  parser deals with EOLs.
+
+	* io.c (prep_io): reduce isatty call (and its system call) on
+	  Cygwin.
+
+Sun Oct  9 23:05:53 2016  Prathamesh Sonpatki  <csonpatki@gmail.com>
+
+	* array.c, class.c: Fixed documentation where Fixnum was referred
+	  directly to use Integer, as Fixnum and Bignum are now unified
+	  into Integer and direct usage is deprecated.  [Fix GH-1459]
+
+Sun Oct  9 11:37:19 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* vm_core.h (VM_ASSERT): stringify expr here before expansion in
+	  RUBY_ASSERT_WHEN.
+
+Sat Oct  8 10:54:22 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/-test-/memory_status/memory_status.c (read_status): use
+	  Win32 GetProcessMemoryInfo API.
+
+	* ext/-test-/memory_status/memory_status.c: get memory sizes by
+	  mach task_info system call.
+
+Sat Oct  8 09:06:55 2016  Aurelien Jacobs  <aurel@gnuage.org>
+
+	* lib/logger.rb (Logger::Period#next_rotate_time): fix monthly log
+	  rotate when DST is applied during a month of 31 days.
+	  [Fix GH-1458]
+
+Fri Oct  7 20:21:39 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* gc.c (gc_prof_setup_new_record): fix the condition to get
+	  rusage.
+
+	* gc.c (gc_profile_dump_major_reason): remove undefined flags.
+
+Fri Oct  7 19:18:33 2016  Masaki Suketa <masaki.suketa@nifty.ne.jp>
+
+	* ext/win32ole/*.c, ext/win32ole/win32ole.h: use RB_INT2FIX instead of
+	  INT2FIX, and so on.
+
+Fri Oct  7 14:18:40 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* basictest/test.rb: Adjust spaces in class declarations
+	  with inheritance. [fix GH-1227] Patch by @adrfer
+	* lib/irb/*: ditto.
+	* lib/prime.rb: ditto.
+	* lib/shell/builtin-command.rb: ditto.
+	* object.c: ditto.
+	* sample/*.rb: ditto.
+	* test/-ext-/method/test_arity.rb: ditto.
+
+Thu Oct  6 17:29:44 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* load.c (rb_require_safe): SyntaxError created by the parser just
+	  has the message and needs to set up the backtrace.
+	  [ruby-core:77491] [Bug #12811]
+
+	* load.c (rb_load_internal0): load/require is not the main
+	  script.
+
+Thu Oct  6 13:35:15 2016  Marc-Andre Lafortune  <ruby-core@marc-andre.ca>
+
+	* enum.c: [DOC] Improve doc [ci-skip]
+
+Thu Oct  6 11:38:14 2016  Chris Jones  <chris@christopherjones.us>
+
+	* ext/readline/extconf.rb: Update error message with correct words.
+	  [fix GH-1453][ci skip] Patch by @magikid
+
+Thu Oct  6 11:01:49 2016  Tieg Zaharia  <tieg.zaharia@gmail.com>
+
+	* lib/uri/common.rb (WEB_ENCODINGS_): Update URI::WEB_ENCODINGS_
+	  hash, and fix documented command to grab it.  [Fix GH-1430]
+
+Thu Oct  6 10:37:13 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* enum.c: Add reduce/inject alias note.
+	  [fix GH-1400][ci skip] Patch by @getaaron
+
+Thu Oct  6 10:30:27 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* thread.c (update_coverage): check coverage values, and ignore
+	  non-fixnum values.
+
+Thu Oct  6 09:19:21 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* io.c (fptr_finalize): use dedicated macro RB_INTEGER_TYPE_P.
+
+Wed Oct  5 18:02:44 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* lib/net/http/response.rb: Improve document readability.
+	  [fix GH-1411][ci skip] Patch by @stz-seongheon
+
+Wed Oct  5 15:43:32 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* node.c (dump_node): flatten statements in NODE_BLOCK.
+
+Wed Oct  5 14:27:36 2016  Byron Bowerman  <me@bm5k.com>
+
+	* range.c: Add docs for max/min behavior with exclusive range.
+	  [fix GH-1433][ci skip] Patch by @BM5k
+
+Wed Oct  5 12:57:21 2016  Richard Schneeman  <richard.schneeman+foo@gmail.com>
+
+	* ext/socket/*.c: Add proper require for example to work.
+	  [fix GH-1378][ci skip] Patch by @schneems
+
+Wed Oct  5 11:47:19 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* io.c: Fixed equivalent ruby code with core implemention.
+	  [fix GH-1429][ci skip] Patch by @sos4nt
+
+Wed Oct  5 11:36:21 2016  SHIBATA Hiroshi  <hsbt@ruby-lang.org>
+
+	* lib/delegate.rb: Added missing spaces and Removed needless spaces.
+	  [fix GH-1454][ci skip] Patch by @bogdanvlviv
+
+Wed Oct  5 03:24:55 2016  Marc-Andre Lafortune  <ruby-core@marc-andre.ca>
+
+	* enum.c: Make Enumerable#chunk with no block return
+	  an Enumerator [#2172]
+
+Wed Oct  5 01:19:45 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* internal.h (ST2FIX): new macro to convert st_index_t to Fixnum.
+	  a hash value of Object might be Bignum, but it causes many troubles
+	  especially the Object is used as a key of a hash.  so I've gave up
+	  to do so.
+
+	* array.c (rb_ary_hash): use above macro.
+
+	* bignum.c (rb_big_hash): ditto.
+
+	* hash.c (rb_obj_hash, rb_hash_hash): ditto.
+
+	* numeric.c (rb_dbl_hash): ditto.
+
+	* proc.c (proc_hash): ditto.
+
+	* re.c (rb_reg_hash, match_hash): ditto.
+
+	* string.c (rb_str_hash_m): ditto.
+
+Tue Oct  4 12:59:44 2016  Koichi ITO  <koic.ito@gmail.com>
+
+	* array.c (rb_ary_dig): [DOC] update an example of error message
+	  by Array#dig, because of Integer Unification.  [Fix GH-1455]
+
+Tue Oct  4 09:55:12 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/bigdecimal/bigdecimal.c (BigDecimal_div2): need more room
+	  for precision to round.  [ruby-core:77475] [Bug #12805]
+
+Tue Oct  4 06:05:46 2016  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* regcomp.c (onig_print_compiled_byte_code): make the shown address
+	  look relative.
+
+Tue Oct  4 05:53:11 2016  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* regexec.c (OPCODE_EXEC_HOOK): op is p-1 because p is already
+	  incremented.
+
+	* regexec.c (OPCODE_EXEC_HOOK): use the exact end address.
+
+	* regexec.c (match_at): don't call OPCODE_EXEC_HOOK in CASE()
+	  when it comes from goto fail.
+
+Mon Oct  3 21:24:41 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* NEWS: mention Readline.quoting_detection_proc{,=}.
+
+Mon Oct  3 21:19:46 2016  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* lib/logger.rb: [DOC] Fix default value of shift_age.
+
+Mon Oct  3 17:20:05 2016  George Brocklehurst  <ruby@georgebrock.com>
+
+	* ext/readline/readline.c (readline_s_set_quoting_detection_proc):
+	  support rl_char_is_quoted_p.  [Feature #12659]
+
+	* ext/readline/readline.c (readline_s_get_quoting_detection_proc):
+	  ditto.
+
 Sun Oct  2 08:22:28 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
 	* include/ruby/ruby.h (RB_INT2FIX, RB_LONG2FIX): prefix RB to
@@ -33,7 +297,7 @@ Sat Oct  1 19:19:34 2016  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 	* compile.c (compile_flip_flop): simplify generated code.
 
 	* compile.c (compile_branch_condition): flip-flop can appear only
-	  in coditional expressions.
+	  in conditional expressions.
 
 Sat Oct  1 02:02:02 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
 
@@ -42,7 +306,7 @@ Sat Oct  1 02:02:02 2016  NAKAMURA Usaku  <usa@ruby-lang.org>
 
 Fri Sep 30 19:06:21 2016  Anton Davydov  <mail@davydovanton.com>
 
-	* lib/uri/http.rb: Documentation and code style imrovements.
+	* lib/uri/http.rb: Documentation and code style improvements.
 	* test/uri/test_http.rb: Added test for coverage.
 	  [fix GH-1427][ruby-core:77255][Misc #12756]
 

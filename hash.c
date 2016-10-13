@@ -239,7 +239,7 @@ VALUE
 rb_obj_hash(VALUE obj)
 {
     st_index_t hnum = any_hash(obj, objid_hash);
-    return LONG2FIX(hnum);
+    return ST2FIX(hnum);
 }
 
 int
@@ -2277,7 +2277,7 @@ rb_hash_hash(VALUE hash)
 	rb_hash_foreach(hash, hash_i, (VALUE)&hval);
     }
     hval = rb_hash_end(hval);
-    return INT2FIX(hval);
+    return ST2FIX(hval);
 }
 
 static int
@@ -2667,6 +2667,68 @@ rb_hash_flatten(int argc, VALUE *argv, VALUE hash)
     }
 
     return ary;
+}
+
+static int
+delete_if_nil(VALUE key, VALUE value, VALUE hash)
+{
+    if (NIL_P(value)) {
+	return ST_DELETE;
+    }
+    return ST_CONTINUE;
+}
+
+static int
+set_if_not_nil(VALUE key, VALUE value, VALUE hash)
+{
+    if (!NIL_P(value)) {
+	rb_hash_aset(hash, key, value);
+    }
+    return ST_CONTINUE;
+}
+
+/*
+ *  call-seq:
+ *     hsh.compact -> new_hash
+ *
+ *  Returns a new hash with the nil values/key pairs removed
+ *
+ *     h = { a: 1, b: false, c: nil }
+ *     h.compact     #=> { a: 1, b: false }
+ *     h             #=> { a: 1, b: false, c: nil }
+ *
+ */
+
+static VALUE
+rb_hash_compact(VALUE hash)
+{
+    VALUE result = rb_hash_new();
+    if (!RHASH_EMPTY_P(hash)) {
+	rb_hash_foreach(hash, set_if_not_nil, result);
+    }
+    return result;
+}
+
+/*
+ *  call-seq:
+ *     hsh.compact! -> hsh
+ *
+ *  Removes all nil values from the hash.
+ *  Returns the hash.
+ *
+ *     h = { a: 1, b: false, c: nil }
+ *     h.compact!     #=> { a: 1, b: false }
+ *
+ */
+
+static VALUE
+rb_hash_compact_bang(VALUE hash)
+{
+    rb_hash_modify_check(hash);
+    if (RHASH(hash)->ntbl) {
+	rb_hash_foreach(hash, delete_if_nil, hash);
+    }
+    return hash;
 }
 
 static VALUE rb_hash_compare_by_id_p(VALUE hash);
@@ -4426,6 +4488,8 @@ Init_Hash(void)
     rb_define_method(rb_cHash, "assoc", rb_hash_assoc, 1);
     rb_define_method(rb_cHash, "rassoc", rb_hash_rassoc, 1);
     rb_define_method(rb_cHash, "flatten", rb_hash_flatten, -1);
+    rb_define_method(rb_cHash,"compact", rb_hash_compact, 0);
+    rb_define_method(rb_cHash,"compact!", rb_hash_compact_bang, 0);
 
     rb_define_method(rb_cHash,"include?", rb_hash_has_key, 1);
     rb_define_method(rb_cHash,"member?", rb_hash_has_key, 1);
